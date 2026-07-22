@@ -13,6 +13,7 @@ Gebaut für den Stack **WordPress + Etch + Automatic.css + Pressidium Cookie Con
 | Modul | Was es tut |
 |---|---|
 | **Security-Header** | HSTS (optional `preload`), `X-Content-Type-Options: nosniff`, `X-Frame-Options`, `Referrer-Policy: same-origin`, `Permissions-Policy`, COOP/CORP, `X-Permitted-Cross-Domain-Policies`; entfernt `X-Powered-By`. Bewusst **kein** COEP (bräche externe Embeds). |
+| **Einbettung (`frame_ancestors`)** | Erlaubt benannten fremden Origins, die Site per `<iframe>` einzubetten — optional nur auf bestimmten Pfaden (z. B. ein LMS, das die Datenschutzseite einbindet). `X-Frame-Options` kann keine fremde Origin ausdrücken (`ALLOW-FROM` ist tot), entfällt deshalb auf genau diesen Antworten und wird durch einen **immer erzwungenen** `Content-Security-Policy: frame-ancestors …`-Header ersetzt — auch im `report-only`-Modus, der nichts erzwingen würde. Default: nur die eigene Origin. |
 | **Content-Security-Policy** | Nonce-basiert + `strict-dynamic`. Ein einziger Output-Buffer hängt die Per-Request-Nonce an *jedes* Script-Tag — auch an rohe Inline-Scripts von Buildern und Plugins, die die WP-Script-API umgehen — externe Skripte laufen daher ohne Allowlist-Pflege. Drei Modi: `off` → `report-only` → `enforce`. Die Etch-Builder-Ansicht (`?etch=magic`) ist automatisch ausgenommen. |
 | **Versions-Leak-Fixes** | Entfernt das `generator`-Meta und Generator-Strings. |
 | **XML-RPC-Block** | `POST /xmlrpc.php` → 403; Pingback-Header und RSD-Link entfernt. |

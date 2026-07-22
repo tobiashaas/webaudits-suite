@@ -13,6 +13,7 @@ Built for the stack **WordPress + Etch + Automatic.css + Pressidium Cookie Conse
 | Module | What it does |
 |---|---|
 | **Security headers** | HSTS (optional `preload`), `X-Content-Type-Options: nosniff`, `X-Frame-Options`, `Referrer-Policy: same-origin`, `Permissions-Policy`, COOP/CORP, `X-Permitted-Cross-Domain-Policies`; strips `X-Powered-By`. Deliberately **no** COEP (would break external embeds). |
+| **Framing (`frame_ancestors`)** | Lets named foreign origins embed the site in an `<iframe>`, optionally only on specific paths (e.g. an LMS embedding the privacy page). `X-Frame-Options` cannot express a foreign origin (`ALLOW-FROM` is dead), so it is omitted on exactly those responses and replaced by an **always-enforced** `Content-Security-Policy: frame-ancestors …` header — sent even in `report-only` mode, which would enforce nothing. Default: own origin only. |
 | **Content-Security-Policy** | Nonce-based + `strict-dynamic`. A single output buffer attaches the per-request nonce to *every* script tag — including raw inline scripts from builders and plugins that bypass the WP script API — so external scripts work without allowlist maintenance. Three modes: `off` → `report-only` → `enforce`. The Etch builder view (`?etch=magic`) is automatically exempt. |
 | **Version-leak fixes** | Removes the `generator` meta and generator strings. |
 | **XML-RPC block** | `POST /xmlrpc.php` → 403; pingback header and RSD link removed. |

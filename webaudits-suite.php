@@ -7,8 +7,15 @@
  *              security.txt, theme-color, Bild-Loading-Fixes, LocalBusiness-
  *              Schema aus CPT, consent-gated GTM + WS-Form-Lead-Bridge.
  *              Admin-Übersicht: Werkzeuge → WebAudits Suite.
- * Version: 3.0.0
+ * Version: 3.1.0
  * Author: WebAudits
+ *
+ * 3.1: frame_ancestors — fremde Origins dürfen (optional nur auf bestimmten
+ *      Pfaden) diese Site einbetten. X-Frame-Options kennt keine fremde Origin
+ *      (ALLOW-FROM ist tot), also wird XFO auf genau diesen Antworten
+ *      weggelassen und stattdessen ein EIGENER, immer erzwungener
+ *      `Content-Security-Policy: frame-ancestors …`-Header gesendet — auch im
+ *      Report-Only-Modus, der nichts erzwingen würde.
  *
  * 2.1: Admin/Backend-Modul — Dashboard-Bereinigung (Widgets/Willkommens-Panel/
  *      Plugin-Widgets), sortierbare Letzter-Login-Spalte, DISALLOW_FILE_EDIT,
@@ -61,7 +68,21 @@ function webaudits_file_config() {
         'security_contact'  => 'mailto:CONTACT@EXAMPLE.COM',// '' = keine security.txt-Route
         'security_expires'  => '2027-01-01T00:00:00.000Z',  // RFC 9116: <= 1 Jahr, vorher erneuern
         'block_xmlrpc'      => true,
-    
+
+        // --- Framing: wer darf diese Site in einen iframe stecken? ---
+        // Default = niemand ausser der eigenen Origin (X-Frame-Options:
+        // SAMEORIGIN + frame-ancestors 'self').
+        // 'origins' = zusaetzlich erlaubte fremde Origins (Schema + Host, ohne
+        // Pfad, ohne Slash am Ende). 'paths' = auf welche Pfade die Ausnahme
+        // begrenzt ist (ohne Slash am Ende, leeres Array = site-weit).
+        // Auf den passenden Antworten faellt X-Frame-Options WEG — der Header
+        // kann keine fremde Origin erlauben (ALLOW-FROM ist in allen aktuellen
+        // Browsern wirkungslos) und wuerde die Einbettung sonst blockieren.
+        'frame_ancestors'   => array(
+            'origins' => array(),   // z. B. array('https://lms.example.com')
+            'paths'   => array(),   // z. B. array('/datenschutz', '/impressum')
+        ),
+
         // --- Foundations ---
         'theme_color'       => '',                          // z. B. '#E30613'; '' = aus
         'color_scheme'      => 'light',
@@ -174,6 +195,40 @@ function webaudits_is_etch_editor() {
     return isset($_GET['etch']) && $_GET['etch'] === 'magic';
 }
 
+// ---------------------------------------------------------------- Framing
+/**
+ * Fremde Origins, die GENAU DIESE Antwort einbetten duerfen.
+ * Leeres Array = niemand (dann bleibt es bei X-Frame-Options: SAMEORIGIN).
+ */
+function webaudits_frame_ancestor_origins() {
+    static $cache = null;
+    if ($cache !== null) return $cache;
+    $cache = array();
+    $fa = webaudits_cfg('frame_ancestors', array());
+    if (!is_array($fa)) return $cache;
+    $origins = array();
+    foreach ((array) (isset($fa['origins']) ? $fa['origins'] : array()) as $o) {
+        $o = trim((string) $o);
+        // Nur echte Origins: Schema + Host, kein Pfad, kein Wildcard.
+        if (!preg_match('~^https?://[A-Za-z0-9.\-]+(:\d+)?$~', $o)) continue;
+        $origins[] = $o;
+    }
+    if (!$origins) return $cache;
+    $paths = array_filter(array_map(function ($p) {
+        return rtrim((string) $p, '/');
+    }, (array) (isset($fa['paths']) ? $fa['paths'] : array())), 'strlen');
+    if (!$paths) { $cache = $origins; return $cache; }   // site-weit
+    $path = rtrim((string) parse_url(isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '/', PHP_URL_PATH), '/');
+    if (in_array($path, $paths, true)) $cache = $origins;
+    return $cache;
+}
+
+/** Wert der frame-ancestors-Direktive fuer diese Antwort. */
+function webaudits_frame_ancestors_value() {
+    $extra = webaudits_frame_ancestor_origins();
+    return $extra ? "'self' " . implode(' ', $extra) : "'self'";
+}
+
 // ==================================================== 1) XML-RPC komplett dicht
 // xmlrpc.php definiert XMLRPC_REQUEST vor wp-load.php -> mu-plugin sieht es früh.
 if (webaudits_cfg('block_xmlrpc') && defined('XMLRPC_REQUEST') && XMLRPC_REQUEST) {
@@ -192,7 +247,11 @@ add_action('send_headers', function () {
     if (headers_sent()) return;
     header('Strict-Transport-Security: max-age=31536000; includeSubDomains' . (webaudits_cfg('hsts_preload') ? '; preload' : ''));
     header('X-Content-Type-Options: nosniff');
-    header('X-Frame-Options: SAMEORIGIN');
+    // XFO kann keine fremde Origin erlauben — auf Antworten mit erlaubten
+    // Fremd-Ancestors muss er entfallen, sonst blockiert er die Einbettung
+    // trotz frame-ancestors. Der Schutz kommt dort aus dem eigenen,
+    // erzwungenen CSP-Header weiter unten (Prioritaet 1001).
+    if (!webaudits_frame_ancestor_origins()) header('X-Frame-Options: SAMEORIGIN');
     // same-origin: intern voller Referrer (WP braucht ihn teils), cross-origin
     // gar keiner — strenger als strict-origin-when-cross-origin, gefahrlos
     // solange kein externer Dienst einen Referrer von uns braucht.
@@ -268,7 +327,7 @@ add_action('send_headers', function () {
         "default-src 'self'",
         "base-uri 'self'",
         "object-src 'none'",
-        "frame-ancestors 'self'",
+        'frame-ancestors ' . webaudits_frame_ancestors_value(),
         "form-action 'self'",
         // Nonce + strict-dynamic ist die eigentliche Policy (CSP3-Browser
         // ignorieren dann 'unsafe-inline' und https: — reine Alt-Browser-
@@ -286,6 +345,21 @@ add_action('send_headers', function () {
     $name = webaudits_cfg('csp_mode') === 'enforce' ? 'Content-Security-Policy' : 'Content-Security-Policy-Report-Only';
     header("$name: $csp");
 }, 1000);
+
+/**
+ * frame-ancestors IMMER erzwungen — als eigener Header, unabhaengig vom
+ * csp_mode. Gruende: (a) Report-Only erzwingt gar nichts, (b) bei csp_mode=off
+ * gaebe es sonst nach dem XFO-Wegfall ueberhaupt keinen Framing-Schutz mehr.
+ * Zweiter Header ist gewollt: mehrere CSP-Header werden UND-verknuepft.
+ * Laeuft NACH dem grossen CSP-Header (1000), damit dessen replace=true den
+ * hier gesetzten Wert nicht ueberschreibt.
+ */
+add_action('send_headers', function () {
+    if (is_admin() || headers_sent()) return;
+    if (webaudits_is_etch_editor()) return;
+    if (webaudits_cfg('csp_mode') === 'enforce') return;   // steckt dort schon drin
+    header('Content-Security-Policy: frame-ancestors ' . webaudits_frame_ancestors_value(), false);
+}, 1001);
 
 // ==================================================== 7) EIN Output-Buffer:
 // (a) Bild-Loading-Fixes, (b) CSP-Nonce an ALLE script-Tags (inline + src).
@@ -571,7 +645,7 @@ add_filter('wp_dropdown_pages', function ($html, $args) {
 // Kanonisches Repo (öffentlich, kein Token nötig). Ein Release = ein Tag vX.Y.Z;
 // der Cron vergleicht 2x täglich und ersetzt NUR webaudits-suite.php — die
 // Site-Konfig (webaudits-config.php) und die DB-Option bleiben unberührt.
-const WEBAUDITS_SUITE_VERSION = '3.0.0';
+const WEBAUDITS_SUITE_VERSION = '3.1.0';
 const WEBAUDITS_SUITE_REPO = 'tobiashaas/webaudits-suite';
 
 add_action('init', function () {
@@ -583,30 +657,35 @@ add_action('webaudits_update_check', 'webaudits_run_update_check');
 
 function webaudits_run_update_check() {
     $status = array('checked_at' => time(), 'current' => WEBAUDITS_SUITE_VERSION, 'error' => '');
-    $api = wp_remote_get('https://api.github.com/repos/' . WEBAUDITS_SUITE_REPO . '/releases/latest', array(
-        'timeout' => 15,
-        'headers' => array('Accept' => 'application/vnd.github+json', 'User-Agent' => 'webaudits-suite-updater'),
+    // Version UND Code in EINEM Request von raw.githubusercontent.com.
+    //
+    // Warum nicht api.github.com/releases/latest: die API ist pro IP auf 60
+    // Requests/Stunde limitiert. Auf Shared Hosting teilen sich alle Kunden
+    // eine Ausgangs-IP, dort ist das Kontingent praktisch immer aufgebraucht —
+    // am 2026-07-22 auf Strato (81.169.144.135) gemessen: HTTP 403,
+    // "remaining: 0". Der Updater lief dadurch NIE. raw.githubusercontent.com
+    // liegt auf einem CDN ohne dieses Limit (gleiche Messung: HTTP 200).
+    //
+    // VERTRAG: der main-Branch ist immer die aktuellste Release-Fassung —
+    // die Version wird erst beim Release angehoben, nicht waehrend der Arbeit.
+    $raw = wp_remote_get('https://raw.githubusercontent.com/' . WEBAUDITS_SUITE_REPO . '/main/webaudits-suite.php', array(
+        'timeout' => 30,
+        'headers' => array('User-Agent' => 'webaudits-suite-updater'),
     ));
-    if (is_wp_error($api) || wp_remote_retrieve_response_code($api) !== 200) {
+    if (is_wp_error($raw) || wp_remote_retrieve_response_code($raw) !== 200) {
         $status['error'] = 'release_check_failed';
         update_option('webaudits_suite_update_status', $status, false);
         return $status;
     }
-    $rel = json_decode(wp_remote_retrieve_body($api), true);
-    $tag = isset($rel['tag_name']) ? $rel['tag_name'] : '';
-    $latest = ltrim($tag, 'v');
+    $code = wp_remote_retrieve_body($raw);
+    $latest = preg_match("/WEBAUDITS_SUITE_VERSION\s*=\s*'([0-9][0-9.]*)'/", $code, $m) ? $m[1] : '';
     $status['latest'] = $latest;
     if (!$latest || version_compare($latest, WEBAUDITS_SUITE_VERSION, '<=')) {
         update_option('webaudits_suite_update_status', $status, false);
         return $status;
     }
-    // Neue Version laden und HART validieren, bevor irgendetwas ersetzt wird —
-    // eine kaputte mu-plugin-Datei legt die ganze Site lahm.
-    $raw = wp_remote_get('https://raw.githubusercontent.com/' . WEBAUDITS_SUITE_REPO . '/' . rawurlencode($tag) . '/webaudits-suite.php', array(
-        'timeout' => 30,
-        'headers' => array('User-Agent' => 'webaudits-suite-updater'),
-    ));
-    $code = (!is_wp_error($raw) && wp_remote_retrieve_response_code($raw) === 200) ? wp_remote_retrieve_body($raw) : '';
+    // HART validieren, bevor irgendetwas ersetzt wird — eine kaputte
+    // mu-plugin-Datei legt die ganze Site lahm.
     $valid = $code !== ''
         && strpos($code, '<?php') === 0
         && strlen($code) > 20000
@@ -696,6 +775,18 @@ function webaudits_admin_page() {
         array($T('Security-Header', 'Security headers'), $on,
             'HSTS' . ($c['hsts_preload'] ? ' <strong>+ preload</strong>' : '') . ', nosniff, X-Frame-Options, Referrer-Policy <code>same-origin</code>, Permissions-Policy, COOP/CORP, X-Permitted-Cross-Domain-Policies; '
             . $T('X-Powered-By entfernt. <em>COEP bewusst nicht (bräche externe Embeds).</em>', 'X-Powered-By stripped. <em>Deliberately no COEP (would break external embeds).</em>')),
+        array($T('Einbettung (frame-ancestors)', 'Framing (frame-ancestors)'),
+            (!empty($c['frame_ancestors']['origins']) ? $on : $off),
+            (empty($c['frame_ancestors']['origins'])
+                ? $T('Nur eigene Origin — X-Frame-Options: SAMEORIGIN + frame-ancestors <code>\'self\'</code>.',
+                     'Own origin only — X-Frame-Options: SAMEORIGIN + frame-ancestors <code>\'self\'</code>.')
+                : $T('Zusaetzlich erlaubt: ', 'Additionally allowed: ')
+                  . '<code>' . esc_html(implode(' ', (array) $c['frame_ancestors']['origins'])) . '</code>'
+                  . (empty($c['frame_ancestors']['paths'])
+                      ? ' — ' . $T('site-weit', 'site-wide')
+                      : ' — ' . $T('nur auf', 'only on') . ' <code>' . esc_html(implode(', ', (array) $c['frame_ancestors']['paths'])) . '</code>')
+                  . '. ' . $T('Auf diesen Antworten entfaellt X-Frame-Options (kennt keine fremde Origin); der Schutz kommt aus einem erzwungenen frame-ancestors-Header.',
+                              'X-Frame-Options is omitted on those responses (it cannot express a foreign origin); protection comes from an enforced frame-ancestors header.'))),
         array('Content-Security-Policy', $c['csp_mode'] === 'off' ? $off : $on,
             $T('Modus', 'Mode') . ': <code>' . esc_html($c['csp_mode']) . '</code> — '
             . $T('nonce-basiert + strict-dynamic; jedes script-Tag bekommt die Nonce (Output-Buffer), externe Skripte laufen ohne Allowlist-Pflege.',
