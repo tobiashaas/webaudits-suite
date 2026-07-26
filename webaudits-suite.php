@@ -7,7 +7,7 @@
  *              security.txt, theme-color, Bild-Loading-Fixes, LocalBusiness-
  *              Schema aus CPT, consent-gated GTM + WS-Form-Lead-Bridge.
  *              Admin-Übersicht: Werkzeuge → WebAudits Suite.
- * Version: 3.1.0
+ * Version: 3.2.0
  * Author: WebAudits
  *
  * 3.1: frame_ancestors — fremde Origins dürfen (optional nur auf bestimmten
@@ -111,7 +111,11 @@ function webaudits_file_config() {
         // GA4 DIREKT per gtag (ohne GTM). Exklusiv zu gtm_id — ist BEIDES gesetzt,
         // gewinnt GTM und GA4-direkt bleibt aus (Doppel-Tracking-Sperre + Notice).
         'ga4_id'            => '',                          // 'G-XXXXXXXXXX'; '' = aus
-        'consent_category'  => 'analytics',                 // Pressidium-Kategorie
+        'consent_category'  => 'analytics',                 // Pressidium-Kategorie (nur consent_provider=pressidium)
+        // Consent-Manager, der die text/plain-Scripts nach Einwilligung aktiviert:
+        //   'pressidium' (Default) | 'iubenda' | 'none' (GTM lädt cookielos via Consent Mode)
+        'consent_provider'  => 'pressidium',
+        'iubenda_purposes'  => '4',                         // iubenda Purpose-ID(s) f. Measurement (nur consent_provider=iubenda)
         // WS-Form-Bridge: pusht Event bei wsf-submit-success. 'generate_lead' wenn
         // jedes Formular ein Lead ist; 'wsf_submit' wenn der Container per form_id
         // entscheidet (Multi-Formular-Sites). '' = Bridge aus.
@@ -440,6 +444,48 @@ add_action('wp_head', function () {
 }, 20);
 
 // ==================================================== 9) GTM consent-gated + WS-Form-Bridge
+
+/** Ist Pressidium Cookie Consent aktiv? Relevant für consent_provider=pressidium.
+ *  Slug aus echten Site-Daten verifiziert; is_plugin_active ist der zuverlässige Check. */
+function webaudits_pressidium_active() {
+    if (!function_exists('is_plugin_active')) require_once ABSPATH . 'wp-admin/includes/plugin.php';
+    return is_plugin_active('pressidium-cookie-consent/pressidium-cookie-consent.php');
+}
+
+/**
+ * Liefert die Attribute für das consent-gated GTM-<script> je nach consent_provider.
+ * Rückgabe: array($attrs, $grant).
+ *   $attrs === null  -> nicht emittieren (Provider nicht einsatzbereit, z. B. Pressidium inaktiv)
+ *   $attrs === ''    -> plain <script> (provider=none): lädt, bleibt aber cookielos
+ *   sonst            -> '<script '.$attrs.'>' (text/plain, vom Consent-Manager aktiviert)
+ */
+function webaudits_consent_gate($category) {
+    $provider = webaudits_cfg('consent_provider', 'pressidium');
+    if ($provider === 'iubenda') {
+        $purposes = trim((string) webaudits_cfg('iubenda_purposes', '4'));
+        $p = $purposes !== '' ? ' data-iub-purposes="' . esc_attr($purposes) . '"' : '';
+        return array('type="text/plain" class="_iub_cs_activate"' . $p, true);
+    }
+    if ($provider === 'none') {
+        return array('', false);
+    }
+    // pressidium (Default): nur wenn aktiv, sonst inert
+    if (!webaudits_pressidium_active()) return array(null, false);
+    return array('type="text/plain" data-cookiecategory="' . esc_attr($category) . '"', true);
+}
+
+// Admin-Warnung: Pressidium als Consent-Provider gewählt, aber Plugin nicht aktiv -> GTM-Gating inaktiv.
+add_action('admin_notices', function () {
+    if (!current_user_can('manage_options')) return;
+    if (!webaudits_cfg('gtm_id')) return;
+    if (webaudits_cfg('consent_provider', 'pressidium') !== 'pressidium') return;
+    if (webaudits_pressidium_active()) return;
+    echo '<div class="notice notice-warning"><p><strong>WebAudits Suite:</strong> ' . esc_html(webaudits_txt(
+        'consent_provider = pressidium, aber das Pressidium-Cookie-Consent-Plugin ist nicht aktiv — das GTM-Consent-Gating ist deshalb inaktiv (GTM wird nicht geladen). consent_provider auf "iubenda" oder "none" setzen, oder Pressidium aktivieren.',
+        'consent_provider = pressidium, but the Pressidium Cookie Consent plugin is not active — GTM consent-gating is therefore inactive (GTM is not loaded). Set consent_provider to "iubenda" or "none", or activate Pressidium.'
+    )) . '</p></div>';
+});
+
 // Consent Mode v2 Defaults — immer, VOR GTM (speichert nichts, DSGVO-ok).
 add_action('wp_head', function () {
     if (!webaudits_cfg('gtm_id') && !webaudits_cfg('ga4_id')) return;
@@ -449,18 +495,24 @@ gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personali
     <?php
 }, 4);
 
-// GTM-Loader — Pressidium (page_scripts=true!) aktiviert ihn nach Einwilligung.
-// Kein noscript-iframe (würde vor Consent feuern). Vor Consent: NULL Google-Requests.
+// GTM-Loader — consent-gated je nach consent_provider:
+//  - pressidium: <script type="text/plain" data-cookiecategory> (Pressidium flippt nach Consent).
+//    Nur wenn Pressidium aktiv, sonst inert (kein toter Script) + Admin-Warnung.
+//  - iubenda:    <script type="text/plain" class="_iub_cs_activate"> (iubenda aktiviert nach Consent).
+//  - none:       plain <script> ohne Consent-Grant -> GTM lädt, bleibt aber cookielos (Consent Mode denied).
+// Kein noscript-iframe (würde vor Consent feuern).
 add_action('wp_head', function () {
     if (!webaudits_cfg('gtm_id')) return;
-    $id = esc_js(webaudits_cfg('gtm_id'));
-    $cat = esc_attr(webaudits_cfg('consent_category', 'analytics'));
-    ?>
-<script type="text/plain" data-cookiecategory="<?php echo $cat; ?>">
-gtag('consent','update',{analytics_storage:'granted'});
-(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','<?php echo $id; ?>');
-</script>
-    <?php
+    $id  = esc_js(webaudits_cfg('gtm_id'));
+    $cat = webaudits_cfg('consent_category', 'analytics');
+    list($attrs, $grant) = webaudits_consent_gate($cat);
+    if ($attrs === null) return; // Provider gewählt aber nicht einsatzbereit (z. B. Pressidium inaktiv)
+    $loader = "(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','" . $id . "');";
+    if ($attrs === '') {
+        echo "<script>\n" . $loader . "\n</script>\n";
+    } else {
+        echo '<script ' . $attrs . ">\ngtag('consent','update',{analytics_storage:'granted'});\n" . $loader . "\n</script>\n";
+    }
 }, 5);
 
 // ==================================================== 9b) GA4 direkt (gtag) — Alternative zu GTM
@@ -645,7 +697,7 @@ add_filter('wp_dropdown_pages', function ($html, $args) {
 // Kanonisches Repo (öffentlich, kein Token nötig). Ein Release = ein Tag vX.Y.Z;
 // der Cron vergleicht 2x täglich und ersetzt NUR webaudits-suite.php — die
 // Site-Konfig (webaudits-config.php) und die DB-Option bleiben unberührt.
-const WEBAUDITS_SUITE_VERSION = '3.1.0';
+const WEBAUDITS_SUITE_VERSION = '3.2.0';
 const WEBAUDITS_SUITE_REPO = 'tobiashaas/webaudits-suite';
 
 add_action('init', function () {
@@ -805,7 +857,11 @@ function webaudits_admin_page() {
         array($T('LocalBusiness-Schema', 'LocalBusiness schema'), !empty($lb['enabled']) ? $on : $off, !empty($lb['enabled'])
             ? '<strong>' . (int) $lb_count . '</strong> ' . $T('Standort(e) aus CPT', 'location(s) from CPT') . ' <code>' . esc_html($lb['post_type']) . '</code> ' . $T('auf Seite', 'on page') . ' <code>/' . esc_html($lb['page']) . '/</code>' : $na),
         array('Google Tag Manager', $c['gtm_id'] ? $on : $off, $c['gtm_id']
-            ? '<code>' . esc_html($c['gtm_id']) . '</code>, ' . $T('consent-gated über Pressidium-Kategorie', 'consent-gated via Pressidium category') . ' <code>' . esc_html($c['consent_category']) . '</code> ' . $T('(Consent Mode v2, VOR Einwilligung kein Google-Request, kein noscript-iframe). Benötigt Pressidium-Option <code>page_scripts</code> = an.', '(Consent Mode v2, no Google request BEFORE consent, no noscript iframe). Requires Pressidium option <code>page_scripts</code> = on.') : $na),
+            ? '<code>' . esc_html($c['gtm_id']) . '</code> — ' . $T('consent-gated via', 'consent-gated via') . ' <code>' . esc_html(webaudits_cfg('consent_provider', 'pressidium')) . '</code>'
+              . ('pressidium' === webaudits_cfg('consent_provider', 'pressidium')
+                    ? ' (' . $T('Kategorie', 'category') . ' <code>' . esc_html($c['consent_category']) . '</code>, ' . $T('benötigt Pressidium <code>page_scripts</code> = an', 'requires Pressidium <code>page_scripts</code> = on') . ')'
+                    : ('iubenda' === webaudits_cfg('consent_provider', 'pressidium') ? ' (<code>_iub_cs_activate</code>)' : ' (' . $T('kein Gating — cookielos', 'no gating — cookieless') . ')'))
+              . ' ' . $T('(Consent Mode v2, VOR Einwilligung kein Google-Request)', '(Consent Mode v2, no Google request before consent)') : $na),
         array($T('GA4 direkt (gtag)', 'GA4 direct (gtag)'), (!empty($c['ga4_id']) && empty($c['gtm_id'])) ? $on : $off, !empty($c['ga4_id'])
             ? (empty($c['gtm_id'])
                 ? '<code>' . esc_html($c['ga4_id']) . '</code> ' . $T('via gtag.js, Consent Mode v2 (Defaults denied). Exklusiv zu GTM.', 'via gtag.js, Consent Mode v2 (defaults denied). Mutually exclusive with GTM.')
