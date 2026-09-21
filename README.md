@@ -20,7 +20,7 @@ Built for the stack **WordPress + Etch + Automatic.css + Pressidium Cookie Conse
 | **security.txt** | Serves `/.well-known/security.txt` (RFC 9116) from config — no physical file needed. |
 | **theme-color / color-scheme** | Emits the brand `<meta name="theme-color">` and `color-scheme`. |
 | **Image loading fix** | Optionally forces `loading="lazy"` (and strips `fetchpriority`) for images whose class matches — for cases where WordPress' LCP heuristic guesses wrong (e.g. the real hero is a canvas). |
-| **LocalBusiness schema** | Optional CPT-driven `LocalBusiness` JSON-LD (multi-location) on a chosen page. Keep it off if your SEO plugin owns schemas. |
+| **LocalBusiness schema** | Optional CPT-driven `LocalBusiness` JSON-LD (multi-location) on a chosen page. Optional `parent` (name + URL) names the legal entity when the site is a brand of a larger company (default: `brand_name`). Keep it off if your SEO plugin owns schemas. |
 | **Google Tag Manager** | Consent-gated container: rendered as `<script type="text/plain" data-cookiecategory="…">`, unblocked by Pressidium Cookie Consent only after consent — **zero Google requests before consent**, no `noscript` iframe. Consent Mode v2 defaults (`denied`) are always set first. Requires the Pressidium option `page_scripts` = on. |
 | **GA4 direct (gtag.js)** | Alternative to GTM for simple sites. **Mutually exclusive:** if a GTM container ID is set, GA4-direct stays locked and an admin notice explains why — one tracking path, never two (double-tracking guard). |
 | **WS Form lead bridge** | Pushes a dataLayer event (e.g. `generate_lead`) on `wsf-submit-success`, with `form_id` — ready for a GTM trigger. |

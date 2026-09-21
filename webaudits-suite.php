@@ -7,7 +7,7 @@
  *              security.txt, theme-color, Bild-Loading-Fixes, LocalBusiness-
  *              Schema aus CPT, consent-gated GTM + WS-Form-Lead-Bridge.
  *              Admin-Übersicht: Werkzeuge → WebAudits Suite.
- * Version: 3.2.0
+ * Version: 3.3.0
  * Author: WebAudits
  *
  * 3.1: frame_ancestors — fremde Origins dürfen (optional nur auf bestimmten
@@ -104,6 +104,9 @@ function webaudits_file_config() {
                 'phone'  => 'telefon',
             ),
             'image'     => '',                              // z. B. og-default.png-URL
+            // Rechtsträger, wenn die Site eine Marke/Sub-Brand ist (Google ordnet die
+            // Adressen dann dem Firmenprofil zu). Leer = brand_name + site_url.
+            'parent'    => array('name' => '', 'url' => ''),
         ),
     
         // --- Tracking: GTM consent-gated (Pressidium, page_scripts muss AN sein) ---
@@ -414,6 +417,12 @@ add_action('wp_head', function () {
     $f = $lb['fields'];
     $site = webaudits_cfg('site_url');
     $brand = webaudits_cfg('brand_name');
+    $parent = array('@type' => 'Organization', 'name' => $brand, 'url' => $site);
+    if (!empty($lb['parent']['name'])) {
+        $parent['name'] = (string) $lb['parent']['name'];
+        $parent['url'] = !empty($lb['parent']['url']) ? esc_url_raw($lb['parent']['url']) : '';
+        if (!$parent['url']) unset($parent['url']);
+    }
     $nodes = array();
     foreach ($q->posts as $p) {
         $street = get_post_meta($p->ID, $f['street'], true);
@@ -433,7 +442,7 @@ add_action('wp_head', function () {
                 'addressLocality' => $city,
                 'addressCountry' => 'DE',
             ),
-            'parentOrganization' => array('@type' => 'Organization', 'name' => $brand, 'url' => $site),
+            'parentOrganization' => $parent,
         );
         if (!empty($lb['image'])) $node['image'] = $lb['image'];
         if ($tel) $node['telephone'] = '+49' . preg_replace('/\D+/', '', preg_replace('/^0/', '', $tel));
@@ -697,7 +706,7 @@ add_filter('wp_dropdown_pages', function ($html, $args) {
 // Kanonisches Repo (öffentlich, kein Token nötig). Ein Release = ein Tag vX.Y.Z;
 // der Cron vergleicht 2x täglich und ersetzt NUR webaudits-suite.php — die
 // Site-Konfig (webaudits-config.php) und die DB-Option bleiben unberührt.
-const WEBAUDITS_SUITE_VERSION = '3.2.0';
+const WEBAUDITS_SUITE_VERSION = '3.3.0';
 const WEBAUDITS_SUITE_REPO = 'tobiashaas/webaudits-suite';
 
 add_action('init', function () {
