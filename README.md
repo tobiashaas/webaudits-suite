@@ -58,6 +58,8 @@ Values resolve in this order (later wins):
 
 Start with `report-only` (the default). Watch the browser console across all page types; once it reports **zero** violations, switch the mode to `enforce` in the UI. The suite's nonce buffer covers builder-emitted inline scripts, so most sites need no policy edits at all.
 
+**Logged-in administrators** can get a looser mode via **CSP for administrators** (`csp_admins`: `same` | `report-only` | `off`, default `same`). Use it when an admin-only frontend tool needs `eval`, e.g. the Automatic.css frontend dashboard. Visitors always get `csp_mode`; the separate `frame-ancestors` header stays enforced for everyone.
+
 ## Self-update — how it works and why it's safe
 
 - A WP-Cron event (twice daily) queries `GET /repos/tobiashaas/webaudits-suite/releases/latest` — anonymous, **no token, no secret on the client site**.

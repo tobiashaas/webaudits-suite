@@ -15,6 +15,7 @@ define('WEBAUDITS_CONFIG_SITE', array(
     'security_contact'  => 'mailto:security@example.com',
     'security_expires'  => '2027-01-01T00:00:00.000Z',
     'csp_mode'          => 'report-only',   // 'off' | 'report-only' | 'enforce'
+    'csp_admins'        => 'same',          // eingeloggte Admins: 'same' | 'report-only' | 'off' (z. B. ACSS-Dashboard braucht eval)
     // Fremde Origins, die diese Site einbetten duerfen. Leer = niemand.
     // Auf den betroffenen Antworten entfaellt X-Frame-Options (kann keine
     // fremde Origin ausdruecken); der Schutz kommt aus einem erzwungenen

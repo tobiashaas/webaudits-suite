@@ -7,7 +7,7 @@
  *              security.txt, theme-color, Bild-Loading-Fixes, LocalBusiness-
  *              Schema aus CPT, consent-gated GTM + WS-Form-Lead-Bridge.
  *              Admin-Übersicht: Werkzeuge → WebAudits Suite.
- * Version: 3.3.0
+ * Version: 3.4.0
  * Author: WebAudits
  *
  * 3.1: frame_ancestors — fremde Origins dürfen (optional nur auf bestimmten
@@ -65,6 +65,10 @@ function webaudits_file_config() {
         // --- Security-Header ---
         'hsts_preload'      => false,                       // erst nach Subdomain-Audit + www-Check!
         'csp_mode'          => 'report-only',               // 'report-only' | 'enforce' | 'off'
+        // Modus für eingeloggte Administratoren (manage_options). 'same' = wie csp_mode.
+        // 'off' z. B., wenn ein Admin-Werkzeug im Frontend eval braucht (ACSS-Dashboard).
+        // Besucher bleiben unberührt; frame-ancestors bleibt immer erzwungen.
+        'csp_admins'        => 'same',                      // 'same' | 'report-only' | 'off'
         'security_contact'  => 'mailto:CONTACT@EXAMPLE.COM',// '' = keine security.txt-Route
         'security_expires'  => '2027-01-01T00:00:00.000Z',  // RFC 9116: <= 1 Jahr, vorher erneuern
         'block_xmlrpc'      => true,
@@ -166,6 +170,7 @@ const WEBAUDITS_UI_KEYS = array(
     'gtm_id'               => 'text',
     'ga4_id'               => 'text',
     'csp_mode'             => 'select',
+    'csp_admins'           => 'select',
     'theme_color'          => 'text',
     'hsts_preload'         => 'bool',
     'block_xmlrpc'         => 'bool',
@@ -325,9 +330,22 @@ add_filter('wp_script_attributes', function ($attr) {
     return $attr;
 }, 10, 1);
 
+/**
+ * Wirksamer CSP-Modus für diesen Request. Eingeloggte Administratoren lassen sich
+ * per `csp_admins` lockern (nie verschärfen); Besucher bekommen immer csp_mode.
+ */
+function webaudits_csp_effective_mode() {
+    $mode = webaudits_cfg('csp_mode');
+    if ($mode === 'off' || !is_user_logged_in() || !current_user_can('manage_options')) return $mode;
+    $admins = webaudits_cfg('csp_admins', 'same');
+    if ($admins === 'off') return 'off';
+    if ($admins === 'report-only') return 'report-only';
+    return $mode;
+}
+
 /** CSP-Header senden (Name je nach Modus). */
 add_action('send_headers', function () {
-    if (webaudits_cfg('csp_mode') === 'off' || is_admin() || headers_sent()) return;
+    if (webaudits_csp_effective_mode() === 'off' || is_admin() || headers_sent()) return;
     if (webaudits_is_etch_editor()) return;   // Builder braucht eval + ws-Bridge
     $n = webaudits_csp_nonce();
     $csp = implode('; ', array(
@@ -349,7 +367,7 @@ add_action('send_headers', function () {
         "worker-src 'self' blob:",
         "upgrade-insecure-requests",
     ));
-    $name = webaudits_cfg('csp_mode') === 'enforce' ? 'Content-Security-Policy' : 'Content-Security-Policy-Report-Only';
+    $name = webaudits_csp_effective_mode() === 'enforce' ? 'Content-Security-Policy' : 'Content-Security-Policy-Report-Only';
     header("$name: $csp");
 }, 1000);
 
@@ -364,7 +382,7 @@ add_action('send_headers', function () {
 add_action('send_headers', function () {
     if (is_admin() || headers_sent()) return;
     if (webaudits_is_etch_editor()) return;
-    if (webaudits_cfg('csp_mode') === 'enforce') return;   // steckt dort schon drin
+    if (webaudits_csp_effective_mode() === 'enforce') return;   // steckt dort schon drin
     header('Content-Security-Policy: frame-ancestors ' . webaudits_frame_ancestors_value(), false);
 }, 1001);
 
@@ -706,7 +724,7 @@ add_filter('wp_dropdown_pages', function ($html, $args) {
 // Kanonisches Repo (öffentlich, kein Token nötig). Ein Release = ein Tag vX.Y.Z;
 // der Cron vergleicht 2x täglich und ersetzt NUR webaudits-suite.php — die
 // Site-Konfig (webaudits-config.php) und die DB-Option bleiben unberührt.
-const WEBAUDITS_SUITE_VERSION = '3.3.0';
+const WEBAUDITS_SUITE_VERSION = '3.4.0';
 const WEBAUDITS_SUITE_REPO = 'tobiashaas/webaudits-suite';
 
 add_action('init', function () {
@@ -792,6 +810,7 @@ function webaudits_admin_page() {
         if ($in['gtm_id'] !== '' && !preg_match('/^GTM-[A-Z0-9]+$/', $in['gtm_id'])) $in['gtm_id'] = '';
         if ($in['ga4_id'] !== '' && !preg_match('/^G-[A-Z0-9]+$/', $in['ga4_id'])) $in['ga4_id'] = '';
         if (!in_array($in['csp_mode'], array('off', 'report-only', 'enforce'), true)) $in['csp_mode'] = 'report-only';
+        if (!in_array($in['csp_admins'], array('same', 'report-only', 'off'), true)) $in['csp_admins'] = 'same';
         if ($in['theme_color'] !== '' && !preg_match('/^#[0-9a-fA-F]{3,8}$/', $in['theme_color'])) $in['theme_color'] = '';
         update_option('webaudits_suite_options', $in, false);
         echo '<div class="notice notice-success"><p>' . esc_html($T(
@@ -937,6 +956,18 @@ function webaudits_admin_page() {
                     <p class="description"><?php echo esc_html($T(
                         'Auf Enforce erst schalten, wenn die Browser-Konsole über alle Seitentypen 0 Report-Only-Violations zeigt.',
                         'Only switch to Enforce once the browser console shows 0 report-only violations across all page types.'
+                    )); ?></p></td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="wa_csp_admins"><?php echo esc_html($T('CSP für Administratoren', 'CSP for administrators')); ?></label></th>
+                    <td><select id="wa_csp_admins" name="csp_admins">
+                        <?php foreach (array('same' => $T('wie oben', 'same as above'), 'report-only' => 'Report-Only', 'off' => $T('aus', 'off')) as $val => $label) : ?>
+                            <option value="<?php echo esc_attr($val); ?>" <?php selected(webaudits_cfg('csp_admins', 'same'), $val); ?>><?php echo esc_html($label); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <p class="description"><?php echo esc_html($T(
+                        'Gilt nur für eingeloggte Administratoren, Besucher bekommen immer die Einstellung oben. Nötig, wenn ein Admin-Werkzeug im Frontend eval braucht (z. B. das ACSS-Dashboard).',
+                        'Applies only to logged-in administrators; visitors always get the setting above. Needed when an admin tool on the frontend requires eval (e.g. the ACSS dashboard).'
                     )); ?></p></td>
                 </tr>
                 <tr>
