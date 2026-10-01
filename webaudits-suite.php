@@ -8,9 +8,11 @@
  *              Schema aus CPT, consent-gated GTM + WS-Form-Lead-Bridge,
  *              User Guard + Sicherheits-Log + erzwungene Core-Sicherheitsupdates.
  *              Admin-Übersicht: Werkzeuge → WebAudits Suite.
- * Version: 3.6.0
+ * Version: 3.6.1
  * Author: WebAudits
  *
+ * 3.6.1: Admin-Übersicht, Zeile 301-Redirects: "$k→$v" las PHP als Variable $k→
+ *      (Bytes > 0x7F gehören zum Bezeichner) → Warnung, Quellpfad fehlte.
  * 3.6: Etch Security eingegliedert (Abschnitt 15) — User Guard (Domain-Allowlist,
  *      fremde Konten werden entschärft, nicht gelöscht), Sicherheits-Log mit CSV
  *      und erzwungene Core-Sicherheitsupdates. Gleiche Optionen und Tabelle wie
@@ -758,7 +760,7 @@ add_filter('wp_dropdown_pages', function ($html, $args) {
 // Kanonisches Repo (öffentlich, kein Token nötig). Ein Release = ein Tag vX.Y.Z;
 // der Cron vergleicht 2x täglich und ersetzt NUR webaudits-suite.php — die
 // Site-Konfig (webaudits-config.php) und die DB-Option bleiben unberührt.
-const WEBAUDITS_SUITE_VERSION = '3.6.0';
+const WEBAUDITS_SUITE_VERSION = '3.6.1';
 const WEBAUDITS_SUITE_REPO = 'tobiashaas/webaudits-suite';
 
 add_action('init', function () {
@@ -954,7 +956,7 @@ function webaudits_admin_page() {
         array($T('Privacy-Policy aus CPT', 'Privacy policy from CPT'), !empty($c['privacy_cpt']) ? $on : $off, !empty($c['privacy_cpt'])
             ? 'CPT <code>' . esc_html($c['privacy_cpt']) . '</code> ' . $T('ist in Einstellungen → Datenschutz als Datenschutzseite wählbar.', 'is selectable as privacy page under Settings → Privacy.') : $na),
         array('301-Redirects', !empty($c['redirects']) ? $on : $off, !empty($c['redirects'])
-            ? count($c['redirects']) . ' Redirect(s): ' . esc_html(implode(', ', array_map(function ($k, $v) { return "$k→$v"; }, array_keys($c['redirects']), $c['redirects']))) : $na),
+            ? count($c['redirects']) . ' Redirect(s): ' . esc_html(implode(', ', array_map(function ($k, $v) { return "{$k} → {$v}"; }, array_keys($c['redirects']), $c['redirects']))) : $na),
         array($T('Konten & Sicherheit', 'Accounts & security'),
             WebAudits_Sec::$active ? $on : (WebAudits_Sec::$legacy ? '<span style="color:#996800;font-weight:600">' . esc_html($T('wartet', 'waiting')) . '</span>' : $off),
             WebAudits_Sec::$active
