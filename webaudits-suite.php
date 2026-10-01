@@ -7,7 +7,7 @@
  *              fixes, XML-RPC block, security.txt, consent-gated GTM or GA4,
  *              admin cleanup, account allowlist + security log, forced core
  *              security updates. Self-updating. Tools → WebAudits Suite.
- * Version: 4.0.0
+ * Version: 4.2.0
  * Requires at least: 6.0
  * Requires PHP: 8.1
  * Author: Tobias Haas
@@ -16,6 +16,8 @@
  * License URI: https://opensource.org/licenses/MIT
  * Update URI: https://github.com/tobiashaas/webaudits-suite
  *
+ * 4.2: Regular plugin is the standard install (ZIP in the GitHub releases):
+ *      "Settings" link in the plugin list, deactivation removes the cron events.
  * 4.1: Minimum PHP 8.1 (8.0 and older are end of life). The updater no longer
  *      installs a release whose "Requires PHP" is higher than the server's PHP;
  *      on an older PHP the admin shows a notice. This release still runs on
@@ -67,12 +69,12 @@
  *      — otherwise CSP blocks eval + the bridge WebSocket and the builder
  *      won't load. Anonymous visitors are unaffected.
  *
- * INSTALL: adjust the config per site, copy the file to wp-content/mu-plugins/
- * (auto-active). REPLACES the standalone files mu-plugin-security-headers,
- * mu-plugin-csp and separate performance/schema/GTM files — delete the old
- * files, otherwise headers/buffers are doubled!
+ * INSTALL: upload webaudits-suite.zip (GitHub releases) under Plugins → Add New →
+ * Upload and activate it; settings under Tools → WebAudits Suite. Remove other
+ * plugins/snippets that send security headers or a CSP, otherwise headers and
+ * output buffers are doubled.
  * The static layer (compression, asset cache, readme/license/xmlrpc block for
- * Apache) stays in .htaccess (htaccess-hardening.txt).
+ * Apache) belongs in .htaccess or the server config.
  */
 if (!defined('ABSPATH')) exit;
 
@@ -856,7 +858,7 @@ add_filter('wp_dropdown_pages', function ($html, $args) {
 // Canonical repo (public, no token needed). One release = one tag vX.Y.Z;
 // the cron compares twice daily and replaces ONLY webaudits-suite.php — the
 // site config (webaudits-config.php) and the DB option stay untouched.
-const WEBAUDITS_SUITE_VERSION = '4.1.0';
+const WEBAUDITS_SUITE_VERSION = '4.2.0';
 const WEBAUDITS_SUITE_MIN_PHP = '8.1';   // keep in sync with the "Requires PHP" header
 const WEBAUDITS_SUITE_REPO = 'tobiashaas/webaudits-suite';
 
@@ -917,7 +919,7 @@ function webaudits_run_update_check() {
         return $status;
     }
     // Validate HARD before replacing anything — a broken
-    // mu-plugin file takes down the whole site.
+    // plugin file takes down the whole site.
     $valid = $code !== ''
         && strpos($code, '<?php') === 0
         && strlen($code) > 20000
@@ -957,6 +959,17 @@ function webaudits_run_update_check() {
 // ==================================================== 13) Admin overview (Tools)
 add_action('admin_menu', function () {
     add_management_page('WebAudits Suite', 'WebAudits Suite', 'manage_options', 'webaudits-suite', 'webaudits_admin_page');
+});
+
+// Regular-plugin install: "Settings" link in the plugin list, and deactivation removes
+// the cron events (both are no-ops for a must-use install).
+add_filter('plugin_action_links_' . plugin_basename(__FILE__), function ($links) {
+    array_unshift($links, '<a href="' . esc_url(admin_url('tools.php?page=webaudits-suite')) . '">' . esc_html(webaudits_txt('Einstellungen', 'Settings')) . '</a>');
+    return $links;
+});
+register_deactivation_hook(__FILE__, function () {
+    wp_clear_scheduled_hook('webaudits_update_check');
+    wp_clear_scheduled_hook('etch_security_audit_prune');
 });
 
 function webaudits_admin_page() {

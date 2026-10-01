@@ -4,7 +4,7 @@
 
 🇩🇪 *Deutsche Fassung: [README.de.md](README.de.md)*
 
-It runs on any WordPress site. No build step, no Composer, no dependencies: two plain PHP files (the plugin and your site's config). In production on sites built with Etch, Bricks, Automatic.css, SEOPress and WS Form, with Pressidium Cookie Consent, Borlabs Cookie or iubenda as consent manager.
+It runs on any WordPress site. No build step, no Composer, no dependencies: one PHP file, plus an optional config file for advanced settings. In production on sites built with Etch, Bricks, Automatic.css, SEOPress and WS Form, with Pressidium Cookie Consent, Borlabs Cookie or iubenda as consent manager.
 
 ---
 
@@ -40,15 +40,13 @@ It runs on any WordPress site. No build step, no Composer, no dependencies: two 
 
 ## Installation
 
-**As a must-use plugin (recommended)** — always active, cannot be switched off by accident:
+1. Download **`webaudits-suite.zip`** from the [latest release](../../releases/latest).
+2. In wp-admin go to **Plugins → Add New → Upload Plugin**, upload the ZIP and activate it.
+3. Open **Tools → WebAudits Suite** (or "Settings" in the plugin list), check the overview and set your values.
 
-1. Copy `webaudits-suite.php` into `wp-content/mu-plugins/` (create the folder if needed).
-2. Copy `webaudits-config-sample.php` to `wp-content/mu-plugins/webaudits-config.php` and set your values.
-3. Open **Tools → WebAudits Suite**, check the overview and set the operational values.
+**Advanced settings** that are not on the settings page yet (consent manager, security.txt contact, framing, redirects, …) go into an optional `webaudits-config.php`: copy `webaudits-config-sample.php` to `wp-content/webaudits-config.php` — outside the plugin folder, so updates and reinstalls never touch it.
 
-**As a regular plugin** — put `webaudits-suite.php` into `wp-content/plugins/webaudits-suite/` and activate it. Keep your `webaudits-config.php` in `wp-content/` (outside the plugin folder, so reinstalling the plugin cannot delete it). The suite looks for the config in `wp-content/mu-plugins/`, `wp-content/` and next to itself.
-
-Use **one** of the two ways, never both.
+*Agencies:* the same file also works as a must-use plugin (`wp-content/mu-plugins/`, config next to it), which cannot be deactivated by accident. Use one way per site, never both.
 
 **First run without a config file** is safe: CSP starts in `report-only`, no tracking is loaded, no security.txt is served, comments stay on, the account guard only logs. `site_url` and `brand_name` fall back to the WordPress settings.
 

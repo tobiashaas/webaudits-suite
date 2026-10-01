@@ -4,7 +4,7 @@
 
 🇬🇧 *English version (main): [README.md](README.md)*
 
-Läuft auf jeder WordPress-Site. Kein Build-Schritt, kein Composer, keine Abhängigkeiten: zwei PHP-Dateien (das Plugin und die Konfiguration der Site). Im Einsatz auf Sites mit Etch, Bricks, Automatic.css, SEOPress und WS Form, mit Pressidium Cookie Consent, Borlabs Cookie oder iubenda als Consent-Manager.
+Läuft auf jeder WordPress-Site. Kein Build-Schritt, kein Composer, keine Abhängigkeiten: eine PHP-Datei, dazu optional eine Konfigurationsdatei für erweiterte Einstellungen. Im Einsatz auf Sites mit Etch, Bricks, Automatic.css, SEOPress und WS Form, mit Pressidium Cookie Consent, Borlabs Cookie oder iubenda als Consent-Manager.
 
 ---
 
@@ -40,15 +40,13 @@ Läuft auf jeder WordPress-Site. Kein Build-Schritt, kein Composer, keine Abhän
 
 ## Installation
 
-**Als Must-Use-Plugin (empfohlen)** — immer aktiv, nicht versehentlich abschaltbar:
+1. **`webaudits-suite.zip`** aus dem [neuesten Release](../../releases/latest) herunterladen.
+2. In wp-admin **Plugins → Installieren → Plugin hochladen**, ZIP hochladen und aktivieren.
+3. **Werkzeuge → WebAudits Suite** öffnen (oder „Einstellungen“ in der Plugin-Liste), Übersicht prüfen, Werte setzen.
 
-1. `webaudits-suite.php` nach `wp-content/mu-plugins/` kopieren (Ordner ggf. anlegen).
-2. `webaudits-config-sample.php` als `wp-content/mu-plugins/webaudits-config.php` kopieren und die Werte eintragen.
-3. **Werkzeuge → WebAudits Suite** öffnen, Übersicht prüfen, operative Werte setzen.
+**Erweiterte Einstellungen**, die noch nicht auf der Einstellungsseite stehen (Consent-Manager, security.txt-Kontakt, Einbettung, Weiterleitungen, …), kommen in eine optionale `webaudits-config.php`: `webaudits-config-sample.php` als `wp-content/webaudits-config.php` kopieren — außerhalb des Plugin-Ordners, damit Updates und Neuinstallationen sie nie anfassen.
 
-**Als normales Plugin** — `webaudits-suite.php` nach `wp-content/plugins/webaudits-suite/` legen und aktivieren. Die `webaudits-config.php` dann in `wp-content/` ablegen (außerhalb des Plugin-Ordners, damit eine Neuinstallation sie nicht löscht). Die Suite sucht die Konfiguration in `wp-content/mu-plugins/`, `wp-content/` und neben sich selbst.
-
-Nur **einen** der beiden Wege nutzen, nie beide.
+*Agenturen:* Dieselbe Datei läuft auch als Must-Use-Plugin (`wp-content/mu-plugins/`, Konfiguration daneben) und lässt sich dann nicht versehentlich deaktivieren. Pro Site nur einen Weg nutzen, nie beide.
 
 **Erster Start ohne Konfigurationsdatei** ist unbedenklich: CSP startet als `report-only`, kein Tracking, keine security.txt, Kommentare bleiben an, der User Guard protokolliert nur. `site_url` und `brand_name` kommen aus den WordPress-Einstellungen.
 

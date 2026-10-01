@@ -2,9 +2,9 @@
 /**
  * WebAudits Suite — site configuration (template).
  *
- * Copy this file as `webaudits-config.php`:
- *   - must-use install: into wp-content/mu-plugins/ (next to webaudits-suite.php)
- *   - regular-plugin install: into wp-content/ (outside the plugin folder)
+ * Optional. Copy this file as `wp-content/webaudits-config.php` (outside the plugin
+ * folder, so updates never touch it). Must-use installs keep it in
+ * wp-content/mu-plugins/ instead.
  * Only keys that differ from the defaults need to be set; everything here is
  * optional. This file survives every self-update of the suite. The operational
  * values (IDs, switches, CSP mode) can also be edited under Tools → WebAudits Suite.
