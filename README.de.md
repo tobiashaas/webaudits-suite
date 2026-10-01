@@ -67,6 +67,18 @@ Ist der gewählte Provider nicht einsatzbereit (z. B. `pressidium` ohne das Plug
 
 **Consent-Manager, die GTM selbst laden** (Borlabs Cookie, Complianz, Real Cookie Banner u. a.): `gtm_id` leer lassen und den Container vom Consent-Manager ausliefern lassen. Der Rest der Suite läuft unverändert; die CSP erlaubt den Handler für das verzögerte Borlabs-CSS bereits (siehe unten).
 
+## Zusammenspiel mit anderen Plugins
+
+Die Suite macht nicht doppelt, was ein verbreitetes Plugin auf derselben Site schon erledigt:
+
+| Wenn installiert | Die Suite |
+|---|---|
+| **Wordfence** mit „Don't let WordPress reveal valid users in login errors“ | lässt die Login-Fehlermeldung in Ruhe |
+| **Wordfence** mit Login-History-Spalten | blendet ihre eigene „Letzter Login“-Spalte aus |
+| **Simple History** | protokolliert nur noch Ereignisse des User Guards (blockierte/entschärfte Konten); Anmeldungen, Konten, Plugins und Updates bleiben in Simple History |
+| **SEOPress Pro** | verweist für Weiterleitungen und das LocalBusiness-Schema auf SEOPress (beides bleibt aus, solange es in der Suite nicht konfiguriert ist) |
+| Ein Consent-Manager, der GTM selbst lädt (Borlabs Cookie, Complianz, …) | braucht keine `gtm_id` — leer lassen |
+
 ## Page-Builder
 
 CSP und Nonce-Buffer werden für **eingeloggte Redakteure** in den Bearbeitungsansichten von Page-Buildern ausgelassen, weil Builder `eval` und eigene Vorschau-Kanäle brauchen: Etch (`?etch=magic`), Bricks (`?bricks=run`), Elementor (`?elementor-preview`), Oxygen (`?ct_builder`), Breakdance (`?breakdance=builder`, `?breakdance_iframe`), Beaver Builder (`?fl_builder`), Divi (`?et_fb`), Brizy (`?brizy-edit`, `?brizy-edit-iframe`). Besucher bekommen immer die volle Policy.

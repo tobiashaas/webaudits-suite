@@ -67,6 +67,18 @@ If the configured provider is not ready (e.g. `pressidium` without the plugin), 
 
 **Consent managers that load GTM themselves** (Borlabs Cookie, Complianz, Real Cookie Banner and others): leave `gtm_id` empty and let the consent manager deliver the container. Everything else in the suite works unchanged; the CSP already allows Borlabs' deferred-CSS handler (see below).
 
+## Works alongside other plugins
+
+The suite does not duplicate what a common plugin on the same site already does:
+
+| If installed | The suite |
+|---|---|
+| **Wordfence** with "Don't let WordPress reveal valid users in login errors" | leaves the login error message alone |
+| **Wordfence** with login-history columns | hides its own "Last login" column |
+| **Simple History** | logs only user-guard events (blocked/neutralised accounts); logins, accounts, plugins and updates stay in Simple History |
+| **SEOPress Pro** | points you to SEOPress for redirects and the LocalBusiness schema (both stay off unless you configure them in the suite) |
+| A consent manager that loads GTM itself (Borlabs Cookie, Complianz, …) | needs no `gtm_id` — leave it empty |
+
 ## Page builders
 
 CSP and the nonce buffer are skipped for **logged-in editors** in builder editing views, because builders need `eval` and their own preview channels: Etch (`?etch=magic`), Bricks (`?bricks=run`), Elementor (`?elementor-preview`), Oxygen (`?ct_builder`), Breakdance (`?breakdance=builder`, `?breakdance_iframe`), Beaver Builder (`?fl_builder`), Divi (`?et_fb`), Brizy (`?brizy-edit`, `?brizy-edit-iframe`). Visitors always get the full policy.

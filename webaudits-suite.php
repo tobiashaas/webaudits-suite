@@ -7,7 +7,7 @@
  *              fixes, XML-RPC block, security.txt, consent-gated GTM or GA4,
  *              admin cleanup, account allowlist + security log, forced core
  *              security updates. Self-updating. Tools → WebAudits Suite.
- * Version: 4.2.0
+ * Version: 4.3.0
  * Requires at least: 6.0
  * Requires PHP: 8.1
  * Author: Tobias Haas
@@ -16,6 +16,11 @@
  * License URI: https://opensource.org/licenses/MIT
  * Update URI: https://github.com/tobiashaas/webaudits-suite
  *
+ * 4.3: Steps aside where another plugin already does the job: login-error masking
+ *      and the last-login column when Wordfence provides them; general activity
+ *      logging when Simple History is active (the security log then keeps only
+ *      user-guard events). The overview points to SEOPress Pro for redirects and
+ *      LocalBusiness when it is installed.
  * 4.2: Regular plugin is the standard install (ZIP in the GitHub releases):
  *      "Settings" link in the plugin list, deactivation removes the cron events.
  * 4.1: Minimum PHP 8.1 (8.0 and older are end of life). The updater no longer
@@ -716,9 +721,29 @@ if (webaudits_cfg('disable_file_editor') && !defined('DISALLOW_FILE_EDIT')) {
     define('DISALLOW_FILE_EDIT', true);
 }
 
-// Obscure login errors (no username-enumeration hint).
+// ---------------------------------------------------------------- Other plugins doing the same job
+// Modules step aside when an installed plugin already does exactly this. Checked at
+// request time (inside the callbacks), when all regular plugins are loaded.
+function webaudits_wordfence_masks_login_errors() {
+    return class_exists('wfConfig') && (bool) wfConfig::get('loginSec_maskLoginErrors');
+}
+function webaudits_wordfence_login_column() {
+    return class_exists('\WordfenceLS\Controller_Settings') && method_exists('\WordfenceLS\Controller_Settings', 'shared')
+        && method_exists(\WordfenceLS\Controller_Settings::shared(), 'are_login_history_columns_enabled')
+        && \WordfenceLS\Controller_Settings::shared()->are_login_history_columns_enabled();
+}
+function webaudits_simple_history_active() {
+    return defined('SIMPLE_HISTORY_VERSION') || class_exists('\Simple_History\Simple_History');
+}
+function webaudits_seopress_pro_active() {
+    return defined('SEOPRESS_PRO_VERSION');
+}
+
+// Obscure login errors (no username-enumeration hint). Skipped when Wordfence's
+// "Don't let WordPress reveal valid users in login errors" is on.
 if (webaudits_cfg('generic_login_errors')) {
-    add_filter('login_errors', function () {
+    add_filter('login_errors', function ($errors) {
+        if (webaudits_wordfence_masks_login_errors()) return $errors;
         return webaudits_txt(
             'Anmeldung fehlgeschlagen: Benutzername oder Passwort ist nicht korrekt.',
             'Login failed: username or password is incorrect.'
@@ -757,12 +782,14 @@ add_action('admin_head', function () {
     echo '<style>#dashboard-widgets .empty-container,.dashboard-post-browser,.community-events-footer{display:none !important;}</style>';
 }, 100);
 
-// User list: sortable "Last login" column.
+// User list: sortable "Last login" column. The timestamp is always recorded; the
+// column is skipped when Wordfence shows its own login-history column.
 if (webaudits_cfg('last_login_column')) {
     add_action('wp_login', function ($user_login, $user) {
         update_user_meta($user->ID, 'last_login', time());
     }, 10, 2);
     add_filter('manage_users_columns', function ($columns) {
+        if (webaudits_wordfence_login_column()) return $columns;
         $columns['last_login'] = webaudits_txt('Letzter Login', 'Last login');
         return $columns;
     });
@@ -773,11 +800,12 @@ if (webaudits_cfg('last_login_column')) {
         return $ts ? wp_date('d.m.Y H:i', $ts) : '—';
     }, 10, 3);
     add_filter('manage_users_sortable_columns', function ($columns) {
+        if (webaudits_wordfence_login_column()) return $columns;
         $columns['last_login'] = 'last_login';
         return $columns;
     });
     add_action('pre_get_users', function ($query) {
-        if (!is_admin() || ($_GET['orderby'] ?? '') !== 'last_login') return;
+        if (!is_admin() || ($_GET['orderby'] ?? '') !== 'last_login' || webaudits_wordfence_login_column()) return;
         // OR meta_query so users WITHOUT last_login don't drop out of the
         // list when sorting (the classic meta_key approach filters them out).
         $query->set('meta_query', array(
@@ -858,7 +886,7 @@ add_filter('wp_dropdown_pages', function ($html, $args) {
 // Canonical repo (public, no token needed). One release = one tag vX.Y.Z;
 // the cron compares twice daily and replaces ONLY webaudits-suite.php — the
 // site config (webaudits-config.php) and the DB option stay untouched.
-const WEBAUDITS_SUITE_VERSION = '4.2.0';
+const WEBAUDITS_SUITE_VERSION = '4.3.0';
 const WEBAUDITS_SUITE_MIN_PHP = '8.1';   // keep in sync with the "Requires PHP" header
 const WEBAUDITS_SUITE_REPO = 'tobiashaas/webaudits-suite';
 
@@ -1024,6 +1052,7 @@ function webaudits_admin_page() {
     }
     $on  = '<span style="color:#00a32a;font-weight:600">' . esc_html($T('aktiv', 'active')) . '</span>';
     $off = '<span style="color:#999">' . esc_html($T('aus', 'off')) . '</span>';
+    $elsewhere = '<span style="color:#2271b1;font-weight:600">' . esc_html($T('übernimmt anderes Plugin', 'handled by another plugin')) . '</span>';
     $na  = '—';
     $upd = get_option('webaudits_suite_update_status', array());
     $upd_txt = 'v' . WEBAUDITS_SUITE_VERSION;
@@ -1076,7 +1105,8 @@ function webaudits_admin_page() {
         array($T('Bild-Loading-Fix', 'Image loading fix'), $c['force_lazy_classes'] ? $on : $off, $c['force_lazy_classes']
             ? $T('Erzwingt <code>loading="lazy"</code> (und entfernt <code>fetchpriority</code>) für: ', 'Forces <code>loading="lazy"</code> (and removes <code>fetchpriority</code>) for: ') . '<code>' . esc_html(implode(', ', $c['force_lazy_classes'])) . '</code>' : $na),
         array($T('LocalBusiness-Schema', 'LocalBusiness schema'), !empty($lb['enabled']) ? $on : $off, !empty($lb['enabled'])
-            ? '<strong>' . (int) $lb_count . '</strong> ' . $T('Standort(e) aus CPT', 'location(s) from CPT') . ' <code>' . esc_html($lb['post_type']) . '</code> ' . $T('auf Seite', 'on page') . ' <code>/' . esc_html($lb['page']) . '/</code>' : $na),
+            ? '<strong>' . (int) $lb_count . '</strong> ' . $T('Standort(e) aus CPT', 'location(s) from CPT') . ' <code>' . esc_html($lb['post_type']) . '</code> ' . $T('auf Seite', 'on page') . ' <code>/' . esc_html($lb['page']) . '/</code>'
+              . (webaudits_seopress_pro_active() ? ' — <strong>' . $T('SEOPress Pro ist aktiv und kann das als automatisches Schema; dort pflegen und hier abschalten.', 'SEOPress Pro is active and can do this as an automatic schema; manage it there and switch it off here.') . '</strong>' : '') : $na),
         array('Google Tag Manager', $c['gtm_id'] ? $on : $off, $c['gtm_id']
             ? '<code>' . esc_html($c['gtm_id']) . '</code> — ' . $T('consent-gated via', 'consent-gated via') . ' <code>' . esc_html(webaudits_cfg('consent_provider', 'pressidium')) . '</code>'
               . ('pressidium' === webaudits_cfg('consent_provider', 'pressidium')
@@ -1094,19 +1124,24 @@ function webaudits_admin_page() {
             ? $T('Formular-Absendung (<code>wsf-submit-success</code>) → dataLayer-Event', 'Form submission (<code>wsf-submit-success</code>) → dataLayer event') . ' <code>' . esc_html($c['wsf_bridge_event']) . '</code>' : $na),
         array($T('Dashboard-Bereinigung', 'Dashboard cleanup'), !empty($c['admin_cleanup']) ? $on : $off, !empty($c['admin_cleanup'])
             ? $T('Standard-Widgets, Willkommens-Panel und Plugin-Widgets entfernt; leere Container ausgeblendet.', 'Default widgets, welcome panel and plugin widgets removed; empty containers hidden.') : $na),
-        array($T('Letzter-Login-Spalte', 'Last-login column'), !empty($c['last_login_column']) ? $on : $off, !empty($c['last_login_column'])
-            ? $T('Benutzer-Liste zeigt den letzten Login (sortierbar, Site-Zeitzone).', 'User list shows the last login (sortable, site timezone).') : $na),
+        array($T('Letzter-Login-Spalte', 'Last-login column'), !empty($c['last_login_column']) ? (webaudits_wordfence_login_column() ? $elsewhere : $on) : $off, !empty($c['last_login_column'])
+            ? (webaudits_wordfence_login_column()
+                ? $T('Wordfence zeigt bereits eine Login-Spalte, die der Suite bleibt ausgeblendet.', 'Wordfence already shows a login column, so the suite\'s column stays hidden.')
+                : $T('Benutzer-Liste zeigt den letzten Login (sortierbar, Site-Zeitzone).', 'User list shows the last login (sortable, site timezone).')) : $na),
         array($T('Datei-Editor', 'File editor'), !empty($c['disable_file_editor']) ? $on : $off, !empty($c['disable_file_editor'])
             ? $T('Theme-/Plugin-Editor deaktiviert (<code>DISALLOW_FILE_EDIT</code>).', 'Theme/plugin editor disabled (<code>DISALLOW_FILE_EDIT</code>).') : $na),
-        array($T('Login-Fehlermeldung', 'Login error message'), !empty($c['generic_login_errors']) ? $on : $off, !empty($c['generic_login_errors'])
-            ? $T('Generische Meldung — verrät nicht, ob der Benutzername existiert.', 'Generic message — does not reveal whether the username exists.') : $na),
+        array($T('Login-Fehlermeldung', 'Login error message'), !empty($c['generic_login_errors']) ? (webaudits_wordfence_masks_login_errors() ? $elsewhere : $on) : $off, !empty($c['generic_login_errors'])
+            ? (webaudits_wordfence_masks_login_errors()
+                ? $T('Wordfence verschleiert die Meldung bereits, die Suite greift nicht ein.', 'Wordfence already masks the message, the suite stays out of it.')
+                : $T('Generische Meldung — verrät nicht, ob der Benutzername existiert.', 'Generic message — does not reveal whether the username exists.')) : $na),
         array($T('Kommentare', 'Comments'), !empty($c['disable_comments']) ? '<span style="color:#d63638;font-weight:600">' . esc_html($T('deaktiviert', 'disabled')) . '</span>' : $off, !empty($c['disable_comments'])
             ? $T('Komplett aus: Frontend geschlossen, Bestand ausgeblendet, Admin-Menü/Adminbar entfernt, REST-Endpunkte entfernt, Feed-Links aus dem Head.', 'Fully off: frontend closed, existing comments hidden, admin menu/adminbar removed, REST endpoints removed, feed links stripped from head.')
             : $T('Kommentare laufen normal.', 'Comments work as usual.')),
         array($T('Privacy-Policy aus CPT', 'Privacy policy from CPT'), !empty($c['privacy_cpt']) ? $on : $off, !empty($c['privacy_cpt'])
             ? 'CPT <code>' . esc_html($c['privacy_cpt']) . '</code> ' . $T('ist in Einstellungen → Datenschutz als Datenschutzseite wählbar.', 'is selectable as privacy page under Settings → Privacy.') : $na),
         array('301-Redirects', !empty($c['redirects']) ? $on : $off, !empty($c['redirects'])
-            ? count($c['redirects']) . ' Redirect(s): ' . esc_html(implode(', ', array_map(function ($k, $v) { return "{$k} → {$v}"; }, array_keys($c['redirects']), $c['redirects']))) : $na),
+            ? count($c['redirects']) . ' Redirect(s): ' . esc_html(implode(', ', array_map(function ($k, $v) { return "{$k} → {$v}"; }, array_keys($c['redirects']), $c['redirects'])))
+              . (webaudits_seopress_pro_active() ? ' — <strong>' . $T('SEOPress Pro ist aktiv und hat einen Weiterleitungs-Manager; Weiterleitungen dort pflegen.', 'SEOPress Pro is active and has a redirect manager; manage redirects there.') . '</strong>' : '') : $na),
         array($T('Konten & Sicherheit', 'Accounts & security'),
             WebAudits_Sec::$active ? $on : (WebAudits_Sec::$legacy ? '<span style="color:#996800;font-weight:600">' . esc_html($T('wartet', 'waiting')) . '</span>' : $off),
             WebAudits_Sec::$active
@@ -1397,9 +1432,17 @@ final class WebAudits_Sec_Audit
     const RETAIN_DAYS = 180;
     const CRON_HOOK   = 'etch_security_audit_prune';
 
+    /** Simple History already logs logins, accounts, roles, plugins, themes and core updates. */
+    public static function general_events_elsewhere() { return webaudits_simple_history_active(); }
+
     public static function boot()
     {
         self::maybe_install();
+        add_action(self::CRON_HOOK, array(__CLASS__, 'prune'));
+        if (!wp_next_scheduled(self::CRON_HOOK)) wp_schedule_event(time() + 3600, 'daily', self::CRON_HOOK);
+        // One activity log per site: with Simple History active, this log keeps only
+        // what nobody else records — the user guard's blocked/neutralised accounts.
+        if (self::general_events_elsewhere()) return;
         add_action('user_register',   array(__CLASS__, 'on_user_register'), 5, 1);
         add_action('profile_update',  array(__CLASS__, 'on_profile_update'), 5, 2);
         add_action('set_user_role',   array(__CLASS__, 'on_set_role'), 5, 3);
@@ -1411,8 +1454,6 @@ final class WebAudits_Sec_Audit
         add_action('activated_plugin',   array(__CLASS__, 'on_plugin_activated'), 5, 1);
         add_action('deactivated_plugin', array(__CLASS__, 'on_plugin_deactivated'), 5, 1);
         add_action('switch_theme',       array(__CLASS__, 'on_switch_theme'), 5, 1);
-        add_action(self::CRON_HOOK, array(__CLASS__, 'prune'));
-        if (!wp_next_scheduled(self::CRON_HOOK)) wp_schedule_event(time() + 3600, 'daily', self::CRON_HOOK);
     }
 
     public static function table() { global $wpdb; return $wpdb->prefix . self::TABLE; }
@@ -1563,6 +1604,7 @@ final class WebAudits_Sec_Core
     public static function log_result($results)
     {
         if (empty($results['core']) || !is_array($results['core'])) return;
+        if (WebAudits_Sec_Audit::general_events_elsewhere()) return;   // Simple History logs core updates
         foreach ($results['core'] as $r) {
             $ver = (isset($r->item) && isset($r->item->current)) ? $r->item->current : '?';
             $ok  = !empty($r->result) && !is_wp_error($r->result);
@@ -1639,6 +1681,12 @@ final class WebAudits_Sec_Admin
         $csv = wp_nonce_url(admin_url('admin-post.php?action=webaudits_sec_csv'), 'webaudits_sec_csv');
 
         echo '<p>' . esc_html(sprintf($T('%1$d Einträge · Aufbewahrung %2$d Tage · Zeiten in Website-Zeitzone.', '%1$d entries · kept for %2$d days · times in site timezone.'), $total, WebAudits_Sec_Audit::RETAIN_DAYS)) . '</p>';
+        if (WebAudits_Sec_Audit::general_events_elsewhere()) {
+            echo '<p><strong>' . esc_html($T('Simple History ist aktiv:', 'Simple History is active:')) . '</strong> ' . esc_html($T(
+                'Anmeldungen, Konten, Rollen, Plugins und Updates protokolliert dort Simple History. Hier stehen ab jetzt nur noch die Ereignisse des User Guards (blockierte und entschärfte Konten); ältere Einträge bleiben erhalten.',
+                'Logins, accounts, roles, plugins and updates are logged by Simple History. From now on this log only holds user-guard events (blocked and neutralised accounts); older entries are kept.'
+            )) . '</p>';
+        }
         echo '<form method="get" style="margin:1em 0"><input type="hidden" name="page" value="webaudits-suite"><input type="hidden" name="tab" value="log">';
         echo '<label class="screen-reader-text" for="wa_sec_ev">' . esc_html($T('Ereignis', 'Event')) . '</label><select id="wa_sec_ev" name="ev"><option value="">— ' . esc_html($T('alle Ereignisse', 'all events')) . ' —</option>';
         foreach ($events as $e) printf('<option value="%s"%s>%s</option>', esc_attr($e), selected($ev, $e, false), esc_html($e));
