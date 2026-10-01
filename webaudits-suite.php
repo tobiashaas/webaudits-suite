@@ -5,10 +5,17 @@
  *              ACSS + Pressidium + WS Form): Security-Header + CSP (nonce,
  *              Report-Only→Enforce), Versions-Leak-Fixes, XML-RPC-Block,
  *              security.txt, theme-color, Bild-Loading-Fixes, LocalBusiness-
- *              Schema aus CPT, consent-gated GTM + WS-Form-Lead-Bridge.
+ *              Schema aus CPT, consent-gated GTM + WS-Form-Lead-Bridge,
+ *              User Guard + Sicherheits-Log + erzwungene Core-Sicherheitsupdates.
  *              Admin-Übersicht: Werkzeuge → WebAudits Suite.
- * Version: 3.5.0
+ * Version: 3.6.0
  * Author: WebAudits
+ *
+ * 3.6: Etch Security eingegliedert (Abschnitt 15) — User Guard (Domain-Allowlist,
+ *      fremde Konten werden entschärft, nicht gelöscht), Sicherheits-Log mit CSV
+ *      und erzwungene Core-Sicherheitsupdates. Gleiche Optionen und Tabelle wie
+ *      Etch Security 1.1.1, Bestandsdaten bleiben. Solange die alte
+ *      etch-security.php noch geladen ist, bleibt das Modul aus (Hinweis im Admin).
  *
  * 3.1: frame_ancestors — fremde Origins dürfen (optional nur auf bestimmten
  *      Pfaden) diese Site einbetten. X-Frame-Options kennt keine fremde Origin
@@ -161,6 +168,11 @@ function webaudits_file_config() {
         // --- Explizite 301-Redirects (alter Pfad => neuer Pfad, je mit Slash).
         //     Für root-basierte CPTs greift WPs "alter Slug"-Redirect nicht. ---
         'redirects'            => array(),   // z. B. array('/alt/' => '/neu/')
+
+        // --- Konten & Sicherheit (Abschnitt 15, bis 3.5 „Etch Security") ---
+        // User Guard, Sicherheits-Log, erzwungene Core-Sicherheitsupdates. Domains und
+        // Schalter pflegt man unter Werkzeuge → WebAudits Suite → Konten & Sicherheit.
+        'security_module'      => true,
     );
     $site = defined('WEBAUDITS_CONFIG_SITE') ? WEBAUDITS_CONFIG_SITE : array();
     $cfg = array_merge($defaults, (array) $site);
@@ -746,7 +758,7 @@ add_filter('wp_dropdown_pages', function ($html, $args) {
 // Kanonisches Repo (öffentlich, kein Token nötig). Ein Release = ein Tag vX.Y.Z;
 // der Cron vergleicht 2x täglich und ersetzt NUR webaudits-suite.php — die
 // Site-Konfig (webaudits-config.php) und die DB-Option bleiben unberührt.
-const WEBAUDITS_SUITE_VERSION = '3.5.0';
+const WEBAUDITS_SUITE_VERSION = '3.6.0';
 const WEBAUDITS_SUITE_REPO = 'tobiashaas/webaudits-suite';
 
 add_action('init', function () {
@@ -819,6 +831,15 @@ add_action('admin_menu', function () {
 
 function webaudits_admin_page() {
     $T = 'webaudits_txt';
+    // Reiter des Sicherheits-Moduls (Abschnitt 15): eigene Ansichten, eigenes Speichern über admin-post.
+    $tab = isset($_GET['tab']) ? sanitize_key($_GET['tab']) : 'suite';
+    if (in_array($tab, array('konten', 'log'), true) && WebAudits_Sec::$active) {
+        echo '<div class="wrap"><h1>WebAudits Suite</h1>';
+        webaudits_admin_tabs($tab);
+        if ($tab === 'log') WebAudits_Sec_Admin::render_log(); else WebAudits_Sec_Admin::render_status();
+        echo '</div>';
+        return;
+    }
     // Speichern (Settings-UI): nur die UI-Schlüssel, Checkboxen explizit 0/1.
     if (isset($_POST['webaudits_save']) && current_user_can('manage_options') && check_admin_referer('webaudits_suite_save')) {
         $in = array();
@@ -934,12 +955,20 @@ function webaudits_admin_page() {
             ? 'CPT <code>' . esc_html($c['privacy_cpt']) . '</code> ' . $T('ist in Einstellungen → Datenschutz als Datenschutzseite wählbar.', 'is selectable as privacy page under Settings → Privacy.') : $na),
         array('301-Redirects', !empty($c['redirects']) ? $on : $off, !empty($c['redirects'])
             ? count($c['redirects']) . ' Redirect(s): ' . esc_html(implode(', ', array_map(function ($k, $v) { return "$k→$v"; }, array_keys($c['redirects']), $c['redirects']))) : $na),
+        array($T('Konten & Sicherheit', 'Accounts & security'),
+            WebAudits_Sec::$active ? $on : (WebAudits_Sec::$legacy ? '<span style="color:#996800;font-weight:600">' . esc_html($T('wartet', 'waiting')) . '</span>' : $off),
+            WebAudits_Sec::$active
+                ? $T('Sicherheits-Log', 'Security log') . ' · User Guard ' . (WebAudits_Sec_Config::enforcing() ? $T('erzwingt', 'enforcing') . ' <code>' . esc_html(implode(', ', WebAudits_Sec_Config::allowed_domains())) . '</code>' : $T('nur protokollierend', 'logging only'))
+                  . ' · ' . $T('Core-Sicherheitsupdates', 'core security updates') . ' ' . (WebAudits_Sec_Config::force_core_updates() ? $T('erzwungen', 'enforced') : $T('Site-Policy', 'site policy'))
+                  . ' — <a href="' . esc_url(WebAudits_Sec_Admin::url('konten')) . '">' . $T('Einstellungen', 'settings') . '</a>'
+                : (WebAudits_Sec::$legacy ? $T('Alte Datei etch-security.php ist noch aktiv — entfernen, dann übernimmt die Suite.', 'Old file etch-security.php is still active — remove it and the suite takes over.') : $na)),
     );
     // Unkonfigurierte Module (Status aus, keine Details) nicht listen.
     $rows = array_values(array_filter($rows, function ($r) { return $r[2] !== '—'; }));
     ?>
     <div class="wrap">
         <h1>WebAudits Suite</h1>
+        <?php if (WebAudits_Sec::$active) webaudits_admin_tabs('suite'); ?>
         <table class="widefat striped" style="max-width:1100px">
             <thead><tr><th style="width:220px"><?php echo esc_html($T('Modul', 'Module')); ?></th><th style="width:80px">Status</th><th>Details</th></tr></thead>
             <tbody>
@@ -1021,3 +1050,537 @@ function webaudits_admin_page() {
     </div>
     <?php
 }
+
+// ==================================================== 15) Konten & Sicherheit (bis 3.5 eigenes Plugin „Etch Security")
+// User Guard (Domain-Allowlist für neue Konten + Backstop gegen wp_insert_user und
+// Rechte-Eskalation), Sicherheits-Log (eigene Tabelle: Actor, IP, Request; 180 Tage,
+// CSV) und erzwungene Core-Sicherheitsupdates. Übernommen aus Etch Security 1.1.1
+// (github.com/tobiashaas/Etch-Security, archiviert). Optionen (etch_security_*), die
+// Tabelle {prefix}etch_security_audit, Meta, Filter und die Konstante
+// ETCH_SECURITY_ALLOWED_DOMAINS gelten unverändert weiter: Bestandsdaten bleiben.
+// Liegt die alte etch-security.php noch im mu-plugins-Ordner (oder ist sie als Plugin
+// aktiv), bleibt dieses Modul aus, damit nichts doppelt läuft; die Suite zeigt dann
+// einen Hinweis. Ganz abschalten: 'security_module' => false in webaudits-config.php.
+
+final class WebAudits_Sec
+{
+    public static $active = false;   // Modul läuft
+    public static $legacy = false;   // alte Etch-Security-Datei ist noch geladen
+}
+
+final class WebAudits_Sec_Config
+{
+    const OPT_DOMAINS      = 'etch_security_allowed_domains';     // array von Domains
+    const OPT_ENFORCE      = 'etch_security_enforce';             // '1' | '0'
+    const OPT_CORE_UPDATES = 'etch_security_force_core_updates';  // '1' | '0' (Default an)
+
+    /** Konfigurierte Domains (Option, sonst die Konstante als Erst-Default). */
+    public static function configured_domains()
+    {
+        $opt = get_option(self::OPT_DOMAINS, null);
+        if ($opt === null && defined('ETCH_SECURITY_ALLOWED_DOMAINS')) $opt = self::parse(ETCH_SECURITY_ALLOWED_DOMAINS);
+        return is_array($opt) ? $opt : array();
+    }
+
+    /** Effektive Allowlist: konfigurierte Domains + Domain der Admin-Adresse (gegen Selbst-Aussperren) + Filter. */
+    public static function allowed_domains()
+    {
+        $domains = self::configured_domains();
+        $admin = strtolower((string) get_option('admin_email'));
+        $at = strrpos($admin, '@');
+        if ($at !== false) $domains[] = substr($admin, $at + 1);
+        $domains = apply_filters('etch_security_allowed_domains', $domains);
+        return array_values(array_unique(array_filter(array_map('strtolower', (array) $domains))));
+    }
+
+    /** Enforcement nur, wenn eingeschaltet UND mindestens eine Domain konfiguriert. */
+    public static function enforcing()
+    {
+        if (get_option(self::OPT_ENFORCE, '0') !== '1') return false;
+        return count(self::configured_domains()) > 0;
+    }
+
+    public static function force_core_updates() { return get_option(self::OPT_CORE_UPDATES, '1') === '1'; }
+
+    public static function is_allowed($email)
+    {
+        $email = strtolower(trim((string) $email));
+        $at = strrpos($email, '@');
+        if ($email === '' || $at === false) return false;
+        return in_array(substr($email, $at + 1), self::allowed_domains(), true);
+    }
+
+    /** "a.com, b.de\nc.org" -> ['a.com','b.de','c.org'] */
+    public static function parse($raw)
+    {
+        $out = array();
+        foreach (preg_split('/[\s,;]+/', (string) $raw, -1, PREG_SPLIT_NO_EMPTY) as $p) {
+            $p = strtolower(ltrim(trim($p), '@'));
+            if ($p !== '') $out[] = $p;
+        }
+        return array_values(array_unique($out));
+    }
+}
+
+final class WebAudits_Sec_Guard
+{
+    const FLAG_META = 'etch_security_neutralized';
+    private static $busy = false;
+
+    public static function boot()
+    {
+        // Schicht 1 — Prävention auf den regulären Wegen.
+        add_filter('rest_pre_insert_user',       array(__CLASS__, 'guard_rest'), 10, 2);
+        add_action('user_profile_update_errors', array(__CLASS__, 'guard_profile'), 10, 3);
+        add_filter('registration_errors',        array(__CLASS__, 'guard_registration'), 10, 3);
+        // Schicht 2 — Backstop, fängt auch wp_insert_user() und Eskalation.
+        add_action('user_register', array(__CLASS__, 'backstop'), PHP_INT_MAX, 1);
+        add_action('set_user_role', array(__CLASS__, 'watch_role'), PHP_INT_MAX, 3);
+    }
+
+    private static function refusal()
+    {
+        return sprintf(webaudits_txt('Diese E-Mail-Adresse ist nicht zugelassen. Konten sind auf %s beschränkt.',
+            'This e-mail address is not allowed. Accounts are restricted to %s.'),
+            '@' . implode(', @', WebAudits_Sec_Config::allowed_domains()));
+    }
+
+    public static function guard_rest($prepared_user, $request)
+    {
+        if (!WebAudits_Sec_Config::enforcing()) return $prepared_user;
+        $email = isset($prepared_user->user_email) ? $prepared_user->user_email : '';
+        if ($email !== '' && !WebAudits_Sec_Config::is_allowed($email)) {
+            WebAudits_Sec_Audit::log('guard_blocked', array('login' => $email), array('weg' => 'rest', 'email' => $email));
+            return new WP_Error('etch_security_user_guard', self::refusal(), array('status' => 403));
+        }
+        return $prepared_user;
+    }
+
+    public static function guard_profile($errors, $update, $user)
+    {
+        if (!WebAudits_Sec_Config::enforcing()) return;
+        $email = isset($user->user_email) ? $user->user_email : '';
+        if ($email === '') return;
+        if ($update && !empty($user->ID)) {
+            $current = get_userdata($user->ID);
+            if ($current && strtolower($current->user_email) === strtolower($email)) return; // unverändert
+        }
+        if (!WebAudits_Sec_Config::is_allowed($email)) {
+            $errors->add('etch_security_user_guard', self::refusal());
+            WebAudits_Sec_Audit::log('guard_blocked', array('id' => isset($user->ID) ? (int) $user->ID : 0, 'login' => $email),
+                array('weg' => 'profile', 'email' => $email));
+        }
+    }
+
+    public static function guard_registration($errors, $login, $email)
+    {
+        if (!WebAudits_Sec_Config::enforcing()) return $errors;
+        if ($email !== '' && !WebAudits_Sec_Config::is_allowed($email)) {
+            $errors->add('etch_security_user_guard', self::refusal());
+            WebAudits_Sec_Audit::log('guard_blocked', array('login' => $email), array('weg' => 'registration', 'email' => $email));
+        }
+        return $errors;
+    }
+
+    public static function backstop($user_id)
+    {
+        if (self::$busy || !WebAudits_Sec_Config::enforcing()) return;
+        $user = get_userdata($user_id);
+        if (!$user || WebAudits_Sec_Config::is_allowed($user->user_email)) return;
+        self::neutralize($user, 'user_register');
+    }
+
+    public static function watch_role($user_id, $role, $old_roles)
+    {
+        if (self::$busy || !WebAudits_Sec_Config::enforcing()) return;
+        $user = get_userdata($user_id);
+        if ($user && !WebAudits_Sec_Config::is_allowed($user->user_email)) self::neutralize($user, 'set_user_role:' . $role);
+    }
+
+    /** Konto unbrauchbar machen, ohne es zu löschen (Beweismittel). */
+    private static function neutralize($user, $trigger)
+    {
+        self::$busy = true;
+        $wp_user = new WP_User($user->ID);
+        $wp_user->set_role('');
+        wp_set_password(wp_generate_password(64, true, true), $user->ID);
+        $tokens = WP_Session_Tokens::get_instance($user->ID);
+        if ($tokens) $tokens->destroy_all();
+        update_user_meta($user->ID, self::FLAG_META, current_time('mysql'));
+        self::$busy = false;
+        WebAudits_Sec_Audit::log('guard_neutralized', array('id' => $user->ID, 'login' => $user->user_login),
+            array('trigger' => $trigger, 'email' => $user->user_email));
+        self::notify($user, $trigger);
+    }
+
+    private static function notify($user, $trigger)
+    {
+        $to = get_option('admin_email');
+        if (!$to) return;
+        $brand = get_bloginfo('name') ?: 'WebAudits Suite';
+        $body = sprintf(
+            "Es wurde ein Konto mit nicht zugelassener Domain angelegt und sofort entschärft.\n\n"
+            . "Benutzer:  %s\nE-Mail:    %s\nID:        %d\nAusgelöst durch: %s\nZeit:      %s\nIP:        %s\n\n"
+            . "Status: Rolle entzogen, Passwort invalidiert, Sessions beendet.\n"
+            . "Das Konto wurde NICHT gelöscht — es ist Beweismittel.\n"
+            . "Details: Werkzeuge → WebAudits Suite → Sicherheits-Log.",
+            $user->user_login, $user->user_email, $user->ID, $trigger, current_time('mysql'), WebAudits_Sec_Util::ip()
+        );
+        wp_mail($to, '[' . $brand . '] Fremder Benutzer blockiert: ' . $user->user_login, $body);
+    }
+}
+
+final class WebAudits_Sec_Audit
+{
+    const TABLE       = 'etch_security_audit';
+    const DB_VERSION  = '1';
+    const DB_OPTION   = 'etch_security_audit_db_version';
+    const RETAIN_DAYS = 180;
+    const CRON_HOOK   = 'etch_security_audit_prune';
+
+    public static function boot()
+    {
+        self::maybe_install();
+        add_action('user_register',   array(__CLASS__, 'on_user_register'), 5, 1);
+        add_action('profile_update',  array(__CLASS__, 'on_profile_update'), 5, 2);
+        add_action('set_user_role',   array(__CLASS__, 'on_set_role'), 5, 3);
+        add_action('deleted_user',    array(__CLASS__, 'on_deleted_user'), 5, 3);
+        add_action('wp_create_application_password', array(__CLASS__, 'on_app_password'), 5, 2);
+        add_action('wp_login',        array(__CLASS__, 'on_login'), 5, 2);
+        add_action('wp_login_failed', array(__CLASS__, 'on_login_failed'), 5, 1);
+        add_action('after_password_reset', array(__CLASS__, 'on_password_reset'), 5, 1);
+        add_action('activated_plugin',   array(__CLASS__, 'on_plugin_activated'), 5, 1);
+        add_action('deactivated_plugin', array(__CLASS__, 'on_plugin_deactivated'), 5, 1);
+        add_action('switch_theme',       array(__CLASS__, 'on_switch_theme'), 5, 1);
+        add_action(self::CRON_HOOK, array(__CLASS__, 'prune'));
+        if (!wp_next_scheduled(self::CRON_HOOK)) wp_schedule_event(time() + 3600, 'daily', self::CRON_HOOK);
+    }
+
+    public static function table() { global $wpdb; return $wpdb->prefix . self::TABLE; }
+
+    public static function maybe_install()
+    {
+        if (get_option(self::DB_OPTION) === self::DB_VERSION) return;
+        global $wpdb;
+        $table = self::table();
+        $charset = $wpdb->get_charset_collate();
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+        dbDelta("CREATE TABLE $table (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            event_time DATETIME NOT NULL,
+            event_time_gmt DATETIME NOT NULL,
+            event VARCHAR(64) NOT NULL,
+            actor_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            actor_login VARCHAR(191) NOT NULL DEFAULT '',
+            target_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            target_login VARCHAR(191) NOT NULL DEFAULT '',
+            detail TEXT NULL,
+            ip VARCHAR(64) NOT NULL DEFAULT '',
+            ua VARCHAR(255) NOT NULL DEFAULT '',
+            uri VARCHAR(255) NOT NULL DEFAULT '',
+            context VARCHAR(16) NOT NULL DEFAULT '',
+            PRIMARY KEY  (id),
+            KEY event_time_gmt (event_time_gmt),
+            KEY event (event),
+            KEY actor_id (actor_id),
+            KEY target_id (target_id)
+        ) $charset;");
+        update_option(self::DB_OPTION, self::DB_VERSION, false);
+    }
+
+    /** Zentrale Schreibfunktion. $target = [id, login]; $detail = Array. */
+    public static function log($event, $target = array(), $detail = array())
+    {
+        global $wpdb;
+        $actor = function_exists('wp_get_current_user') ? wp_get_current_user() : null;
+        $wpdb->insert(self::table(), array(
+            'event_time'     => current_time('mysql'),
+            'event_time_gmt' => current_time('mysql', true),
+            'event'          => substr($event, 0, 64),
+            'actor_id'       => $actor ? (int) $actor->ID : 0,
+            'actor_login'    => $actor ? substr($actor->user_login, 0, 191) : '',
+            'target_id'      => isset($target['id']) ? (int) $target['id'] : 0,
+            'target_login'   => isset($target['login']) ? substr((string) $target['login'], 0, 191) : '',
+            'detail'         => $detail ? wp_json_encode($detail) : null,
+            'ip'             => WebAudits_Sec_Util::ip(),
+            'ua'             => substr(WebAudits_Sec_Util::server('HTTP_USER_AGENT'), 0, 255),
+            'uri'            => substr(WebAudits_Sec_Util::server('REQUEST_URI'), 0, 255),
+            'context'        => WebAudits_Sec_Util::context(),
+        ));
+    }
+
+    public static function on_user_register($user_id)
+    {
+        $u = get_userdata($user_id);
+        self::log('user_register', array('id' => $user_id, 'login' => $u ? $u->user_login : ''),
+            array('email' => $u ? $u->user_email : '', 'roles' => $u ? $u->roles : array()));
+    }
+    public static function on_profile_update($user_id, $old)
+    {
+        $u = get_userdata($user_id);
+        if (!$u || !$old || strtolower($old->user_email) === strtolower($u->user_email)) return;
+        self::log('profile_update', array('id' => $user_id, 'login' => $u->user_login),
+            array('email' => array('von' => $old->user_email, 'nach' => $u->user_email)));
+    }
+    public static function on_set_role($user_id, $role, $old_roles)
+    {
+        $u = get_userdata($user_id);
+        self::log('set_user_role', array('id' => $user_id, 'login' => $u ? $u->user_login : ''),
+            array('neu' => $role ?: '(keine)', 'vorher' => $old_roles ?: array()));
+    }
+    public static function on_deleted_user($id, $reassign, $user)
+    {
+        self::log('deleted_user', array('id' => $id, 'login' => $user ? $user->user_login : ''),
+            array('email' => $user ? $user->user_email : '', 'reassign_to' => $reassign ? (int) $reassign : null));
+    }
+    public static function on_app_password($user_id, $item)
+    {
+        $u = get_userdata($user_id);
+        self::log('application_password_created', array('id' => $user_id, 'login' => $u ? $u->user_login : ''),
+            array('name' => isset($item['name']) ? $item['name'] : ''));
+    }
+    public static function on_login($login, $user)
+    {
+        self::log('login_success', array('id' => $user ? $user->ID : 0, 'login' => $login), array('roles' => $user ? $user->roles : array()));
+    }
+    public static function on_login_failed($username)    { self::log('login_failed', array('login' => $username)); }
+    public static function on_password_reset($user)       { self::log('password_reset', array('id' => $user ? $user->ID : 0, 'login' => $user ? $user->user_login : '')); }
+    public static function on_plugin_activated($plugin)   { self::log('plugin_activated',   array(), array('plugin' => $plugin)); }
+    public static function on_plugin_deactivated($plugin) { self::log('plugin_deactivated', array(), array('plugin' => $plugin)); }
+    public static function on_switch_theme($name)         { self::log('switch_theme',       array(), array('theme' => $name)); }
+
+    public static function prune()
+    {
+        global $wpdb;
+        $table = self::table();
+        $wpdb->query($wpdb->prepare("DELETE FROM $table WHERE event_time_gmt < (UTC_TIMESTAMP() - INTERVAL %d DAY)", self::RETAIN_DAYS));
+    }
+}
+
+final class WebAudits_Sec_Util
+{
+    public static function server($key) { return isset($_SERVER[$key]) ? sanitize_text_field(wp_unslash($_SERVER[$key])) : ''; }
+
+    /** Quell-IP. Bewusst REMOTE_ADDR: Proxy-Header sind fälschbar. Hinter vertrauenswürdigem Proxy per Filter ergänzen. */
+    public static function ip() { return (string) apply_filters('etch_security_client_ip', substr(self::server('REMOTE_ADDR'), 0, 64)); }
+
+    public static function context()
+    {
+        if (defined('WP_CLI') && WP_CLI) return 'cli';
+        if (function_exists('wp_doing_cron') && wp_doing_cron()) return 'cron';
+        if (defined('REST_REQUEST') && REST_REQUEST) return 'rest';
+        if (defined('XMLRPC_REQUEST') && XMLRPC_REQUEST) return 'xmlrpc';
+        if (is_admin()) return 'admin';
+        return 'web';
+    }
+}
+
+final class WebAudits_Sec_Core
+{
+    public static function boot()
+    {
+        if (!WebAudits_Sec_Config::force_core_updates()) return;
+        // Überstimmt Blocker wie Installatron (die per __return_false abschalten): PHP_INT_MAX läuft zuletzt.
+        add_filter('allow_minor_auto_core_updates', '__return_true', PHP_INT_MAX);
+        add_filter('auto_update_core', array(__CLASS__, 'allow_security'), PHP_INT_MAX, 2);
+        add_action('automatic_updates_complete', array(__CLASS__, 'log_result'), 10, 1);
+    }
+
+    /** Nur Minor-/Security-Point-Releases derselben X.Y-Reihe erzwingen; Major bleibt bei der Site-Policy. */
+    public static function allow_security($update, $item)
+    {
+        if (!is_object($item) || empty($item->current)) return $update;
+        $installed = isset($GLOBALS['wp_version']) ? $GLOBALS['wp_version'] : get_bloginfo('version');
+        return self::same_branch($installed, $item->current) ? true : $update;
+    }
+
+    private static function same_branch($a, $b)
+    {
+        $pa = explode('.', preg_replace('/[^0-9.].*$/', '', (string) $a));
+        $pb = explode('.', preg_replace('/[^0-9.].*$/', '', (string) $b));
+        return isset($pa[0], $pa[1], $pb[0], $pb[1]) && $pa[0] === $pb[0] && $pa[1] === $pb[1];
+    }
+
+    public static function log_result($results)
+    {
+        if (empty($results['core']) || !is_array($results['core'])) return;
+        foreach ($results['core'] as $r) {
+            $ver = (isset($r->item) && isset($r->item->current)) ? $r->item->current : '?';
+            $ok  = !empty($r->result) && !is_wp_error($r->result);
+            WebAudits_Sec_Audit::log('core_auto_update', array('login' => 'WordPress'), array('version' => $ver, 'erfolg' => $ok ? 'ja' : 'nein'));
+        }
+    }
+}
+
+final class WebAudits_Sec_Admin
+{
+    public static function boot()
+    {
+        add_action('admin_post_webaudits_sec_save', array(__CLASS__, 'save_settings'));
+        add_action('admin_post_webaudits_sec_csv',  array(__CLASS__, 'export_csv'));
+    }
+
+    public static function url($tab, $args = array())
+    {
+        return add_query_arg(array_merge(array('page' => 'webaudits-suite', 'tab' => $tab), $args), admin_url('tools.php'));
+    }
+
+    private static function row($k, $v) { printf('<tr><th style="width:230px;text-align:left">%s</th><td>%s</td></tr>', esc_html($k), $v); }
+
+    public static function render_status()
+    {
+        $T = 'webaudits_txt';
+        $domains   = WebAudits_Sec_Config::configured_domains();
+        $enforce   = get_option(WebAudits_Sec_Config::OPT_ENFORCE, '0') === '1';
+        $eff       = WebAudits_Sec_Config::allowed_domains();
+        $enforcing = WebAudits_Sec_Config::enforcing();
+        if (!empty($_GET['msg'])) echo '<div class="notice notice-success"><p>' . esc_html(sanitize_text_field(wp_unslash($_GET['msg']))) . '</p></div>';
+
+        echo '<h2>' . esc_html($T('WordPress-Core', 'WordPress core')) . '</h2><table class="widefat" style="max-width:820px"><tbody>';
+        self::row($T('Core-Version', 'Core version'), '<code>' . esc_html(get_bloginfo('version')) . '</code>');
+        self::row($T('Sicherheits-Auto-Updates', 'Security auto-updates'), WebAudits_Sec_Config::force_core_updates()
+            ? '<strong style="color:#1a7f37">' . esc_html($T('erzwungen', 'enforced')) . '</strong> — ' . esc_html($T('Minor-/Security-Releases laufen durch, auch gegen einen Blocker (z. B. Installatron)', 'minor/security releases go through, even against a blocker (e.g. Installatron)'))
+            : '<span style="color:#996800">' . esc_html($T('nicht erzwungen', 'not enforced')) . '</span> — ' . esc_html($T('es gilt die Site-Policy', 'site policy applies')));
+        echo '</tbody></table>';
+
+        echo '<h2>User Guard</h2><table class="widefat" style="max-width:820px"><tbody>';
+        self::row('Enforcement', $enforcing
+            ? '<strong style="color:#1a7f37">' . esc_html($T('aktiv', 'active')) . '</strong> — ' . esc_html($T('fremde Domains werden entschärft', 'foreign domains are neutralised'))
+            : '<strong style="color:#996800">' . esc_html($T('inaktiv', 'inactive')) . '</strong> — ' . esc_html($T('nur das Sicherheits-Log läuft (keine Domain gesetzt oder Schalter aus)', 'only the security log runs (no domain set or switch off)')));
+        self::row($T('Erlaubte Domains (wirksam)', 'Allowed domains (effective)'), $eff ? '<code>' . esc_html(implode(', ', $eff)) . '</code>' : '—');
+        echo '</tbody></table>';
+
+        echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="margin:1.5em 0;max-width:820px">';
+        wp_nonce_field('webaudits_sec_save');
+        echo '<input type="hidden" name="action" value="webaudits_sec_save">';
+        echo '<p><label for="wa_sec_domains"><strong>' . esc_html($T('Erlaubte Domains', 'Allowed domains')) . '</strong> (' . esc_html($T('eine pro Zeile oder kommagetrennt, ohne @', 'one per line or comma-separated, without @')) . '):</label><br>';
+        echo '<textarea id="wa_sec_domains" name="domains" rows="4" style="width:100%;max-width:520px">' . esc_textarea(implode("\n", $domains)) . '</textarea></p>';
+        echo '<p><label><input type="checkbox" name="enforce" value="1"' . checked($enforce, true, false) . '> '
+            . esc_html($T('Enforcement einschalten (fremde Konten sofort entschärfen)', 'Enable enforcement (neutralise foreign accounts immediately)')) . '</label></p>';
+        echo '<p class="description">' . esc_html(sprintf($T('Die Domain der Site-Admin-Adresse (%s) ist immer erlaubt. Ohne konfigurierte Domain bleibt Enforcement aus.', 'The domain of the site admin address (%s) is always allowed. Without a configured domain, enforcement stays off.'), get_option('admin_email'))) . '</p>';
+        echo '<p style="margin-top:1.5em"><label><input type="checkbox" name="force_core" value="1"' . checked(WebAudits_Sec_Config::force_core_updates(), true, false) . '> <strong>'
+            . esc_html($T('WordPress-Core-Sicherheitsupdates erzwingen', 'Enforce WordPress core security updates')) . '</strong> — '
+            . esc_html($T('lässt Minor-/Security-Releases automatisch durchlaufen, auch wenn ein Management-Tool (z. B. Installatron) sie abgeschaltet hat. Major-Versionssprünge bleiben unberührt.', 'lets minor/security releases install automatically, even if a management tool (e.g. Installatron) disabled them. Major upgrades are untouched.')) . '</label></p>';
+        submit_button($T('Speichern', 'Save'));
+        echo '</form>';
+    }
+
+    public static function render_log()
+    {
+        global $wpdb;
+        $T = 'webaudits_txt';
+        $table = WebAudits_Sec_Audit::table();
+        $per   = 50;
+        $paged = max(1, isset($_GET['paged']) ? (int) $_GET['paged'] : 1);
+        $ev    = isset($_GET['ev']) ? sanitize_text_field(wp_unslash($_GET['ev'])) : '';
+        $where = $ev !== '' ? $wpdb->prepare('WHERE event = %s', $ev) : '';
+        $total = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table $where");
+        $rows  = $wpdb->get_results($wpdb->prepare("SELECT * FROM $table $where ORDER BY id DESC LIMIT %d OFFSET %d", $per, ($paged - 1) * $per));
+        $events = $wpdb->get_col("SELECT DISTINCT event FROM $table ORDER BY event");
+        $csv = wp_nonce_url(admin_url('admin-post.php?action=webaudits_sec_csv'), 'webaudits_sec_csv');
+
+        echo '<p>' . esc_html(sprintf($T('%1$d Einträge · Aufbewahrung %2$d Tage · Zeiten in Website-Zeitzone.', '%1$d entries · kept for %2$d days · times in site timezone.'), $total, WebAudits_Sec_Audit::RETAIN_DAYS)) . '</p>';
+        echo '<form method="get" style="margin:1em 0"><input type="hidden" name="page" value="webaudits-suite"><input type="hidden" name="tab" value="log">';
+        echo '<label class="screen-reader-text" for="wa_sec_ev">' . esc_html($T('Ereignis', 'Event')) . '</label><select id="wa_sec_ev" name="ev"><option value="">— ' . esc_html($T('alle Ereignisse', 'all events')) . ' —</option>';
+        foreach ($events as $e) printf('<option value="%s"%s>%s</option>', esc_attr($e), selected($ev, $e, false), esc_html($e));
+        echo '</select> <button class="button">' . esc_html($T('Filtern', 'Filter')) . '</button> <a class="button" href="' . esc_url($csv) . '">' . esc_html($T('CSV-Export', 'CSV export')) . '</a></form>';
+
+        echo '<table class="widefat striped"><thead><tr><th>' . esc_html($T('Zeit', 'Time')) . '</th><th>' . esc_html($T('Ereignis', 'Event')) . '</th><th>Actor</th><th>' . esc_html($T('Ziel', 'Target')) . '</th><th>IP</th><th>' . esc_html($T('Kontext', 'Context')) . '</th><th>Details</th></tr></thead><tbody>';
+        if (!$rows) echo '<tr><td colspan="7">' . esc_html($T('Noch keine Einträge.', 'No entries yet.')) . '</td></tr>';
+        foreach ($rows as $r) {
+            $actor  = $r->actor_id ? $r->actor_login . ' (#' . $r->actor_id . ')' : ($r->actor_login ?: '—');
+            $target = $r->target_login ? $r->target_login . ($r->target_id ? ' (#' . $r->target_id . ')' : '') : '—';
+            printf('<tr><td>%s</td><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><code style="font-size:11px">%s</code></td></tr>',
+                esc_html($r->event_time), esc_html($r->event), esc_html($actor), esc_html($target), esc_html($r->ip), esc_html($r->context),
+                esc_html($r->detail ? substr($r->detail, 0, 300) : ''));
+        }
+        echo '</tbody></table>';
+        $pages = (int) ceil($total / $per);
+        if ($pages > 1) {
+            echo '<div class="tablenav"><div class="tablenav-pages">';
+            for ($i = 1; $i <= $pages; $i++) {
+                echo ' ' . ($i === $paged ? '<strong>' . $i . '</strong>' : '<a href="' . esc_url(self::url('log', array('ev' => $ev, 'paged' => $i))) . '">' . $i . '</a>') . ' ';
+            }
+            echo '</div></div>';
+        }
+    }
+
+    public static function save_settings()
+    {
+        if (!current_user_can('manage_options')) wp_die('Keine Berechtigung.');
+        check_admin_referer('webaudits_sec_save');
+        $domains = WebAudits_Sec_Config::parse(isset($_POST['domains']) ? wp_unslash($_POST['domains']) : '');
+        update_option(WebAudits_Sec_Config::OPT_DOMAINS, $domains, false);
+        update_option(WebAudits_Sec_Config::OPT_ENFORCE, empty($_POST['enforce']) ? '0' : '1', false);
+        update_option(WebAudits_Sec_Config::OPT_CORE_UPDATES, empty($_POST['force_core']) ? '0' : '1', false);
+        $msg = $domains ? webaudits_txt('Gespeichert.', 'Saved.') : webaudits_txt('Gespeichert (keine Domain → Enforcement bleibt aus).', 'Saved (no domain → enforcement stays off).');
+        wp_safe_redirect(self::url('konten', array('msg' => rawurlencode($msg))));
+        exit;
+    }
+
+    public static function export_csv()
+    {
+        if (!current_user_can('manage_options')) wp_die('Keine Berechtigung.');
+        check_admin_referer('webaudits_sec_csv');
+        global $wpdb;
+        $rows = $wpdb->get_results('SELECT * FROM ' . WebAudits_Sec_Audit::table() . ' ORDER BY id DESC', ARRAY_A);
+        nocache_headers();
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename=sicherheits-log-' . gmdate('Ymd-His') . '.csv');
+        $out = fopen('php://output', 'w');
+        fputcsv($out, array('id', 'event_time', 'event_time_gmt', 'event', 'actor_id', 'actor_login', 'target_id', 'target_login', 'detail', 'ip', 'ua', 'uri', 'context'));
+        foreach ($rows as $r) fputcsv($out, $r);
+        fclose($out);
+        exit;
+    }
+}
+
+// Start erst bei plugins_loaded: dann ist sicher bekannt, ob die alte Etch-Security-
+// Datei (mu-plugin ODER reguläres Plugin) geladen wurde.
+add_action('plugins_loaded', function () {
+    if (!webaudits_cfg('security_module', true)) return;
+    // Alte Datei noch geladen? (1.1.x definiert die Konstante, ältere Stände nur ihre Klassen.)
+    $legacy = defined('ETCH_SECURITY_VERSION');
+    if (!$legacy) foreach (get_declared_classes() as $cls) { if (stripos(str_replace('_', '', $cls), 'EtchSecurity') === 0) { $legacy = true; break; } }
+    if ($legacy) { WebAudits_Sec::$legacy = true; return; }
+    WebAudits_Sec::$active = true;
+    WebAudits_Sec_Audit::boot();   // zuerst — Guard und Core-Updates loggen hierüber
+    WebAudits_Sec_Guard::boot();
+    WebAudits_Sec_Core::boot();
+    if (is_admin()) WebAudits_Sec_Admin::boot();
+    // Den eigenen Updater der alten Etch-Security-Datei gibt es nicht mehr.
+    if (wp_next_scheduled('etch_security_update_check')) wp_clear_scheduled_hook('etch_security_update_check');
+}, 0);
+
+/** Reiter der Suite-Seite: Übersicht | Konten & Sicherheit | Sicherheits-Log. */
+function webaudits_admin_tabs($aktiv) {
+    $tabs = array(
+        'suite'  => webaudits_txt('Übersicht & Einstellungen', 'Overview & settings'),
+        'konten' => webaudits_txt('Konten & Sicherheit', 'Accounts & security'),
+        'log'    => webaudits_txt('Sicherheits-Log', 'Security log'),
+    );
+    echo '<nav class="nav-tab-wrapper" style="margin-bottom:16px">';
+    foreach ($tabs as $k => $label) {
+        printf('<a href="%s" class="nav-tab%s"%s>%s</a>', esc_url(add_query_arg(array('page' => 'webaudits-suite', 'tab' => $k), admin_url('tools.php'))),
+            $aktiv === $k ? ' nav-tab-active' : '', $aktiv === $k ? ' aria-current="page"' : '', esc_html($label));
+    }
+    echo '</nav>';
+}
+
+// Alte Lesezeichen auf „Werkzeuge → Etch Security" landen auf dem neuen Reiter
+// (die Seite gibt es nicht mehr; WordPress würde sonst „keine Berechtigung" zeigen).
+add_action('admin_page_access_denied', function () {
+    if (WebAudits_Sec::$active && isset($_GET['page']) && $_GET['page'] === 'etch-security' && current_user_can('manage_options')) {
+        $tab = (isset($_GET['tab']) && $_GET['tab'] === 'log') ? 'log' : 'konten';
+        wp_safe_redirect(WebAudits_Sec_Admin::url($tab));
+        exit;
+    }
+});
+
+add_action('admin_notices', function () {
+    if (!WebAudits_Sec::$legacy || !current_user_can('manage_options')) return;
+    echo '<div class="notice notice-warning"><p><strong>WebAudits Suite:</strong> ' . esc_html(webaudits_txt(
+        'User Guard, Sicherheits-Log und Core-Updates stecken jetzt in der Suite. Die alte Datei etch-security.php ist noch aktiv, deshalb bleibt das Suite-Modul aus. Datei aus wp-content/mu-plugins (bzw. das Plugin) entfernen — Einstellungen und Log bleiben erhalten.',
+        'User guard, security log and core updates now live in the suite. The old file etch-security.php is still active, so the suite module stays off. Remove the file from wp-content/mu-plugins (or the plugin) — settings and log are kept.'
+    )) . '</p></div>';
+});

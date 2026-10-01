@@ -27,6 +27,7 @@ Gebaut für den Stack **WordPress + Etch + Automatic.css + Pressidium Cookie Con
 | **Admin-Aufräumen** | Entfernt Dashboard-Widgets, Willkommens-Panel und eine konfigurierbare Liste von Plugin-Widgets; blendet leere Container aus. |
 | **Kommentare aus** | Komplett: Frontend geschlossen, Bestand ausgeblendet, Admin-Menü/Adminbar-Einträge entfernt, REST-Endpunkte entfernt, Feed-Links aus dem `<head>`. |
 | **Login-Härtung** | Generische Login-Fehlermeldung (keine Username-Enumeration), `DISALLOW_FILE_EDIT`, sortierbare „Letzter Login"-Spalte in der Benutzerliste. |
+| **Konten & Sicherheit** (bis 3.5 das eigene Plugin „Etch Security") | **User Guard:** Neue Konten nur mit erlaubter E-Mail-Domain. Zwei Schichten: REST, Profil und Registrierung lehnen fremde Adressen ab; ein Backstop auf `user_register`/`set_user_role` fängt auch `wp_insert_user()` und Rechte-Eskalation. Ein fremdes Konto wird **entschärft, nicht gelöscht** (Rolle weg, Passwort zufällig, Sessions beendet, Mail an die Admin-Adresse) — es bleibt Beweismittel. Die Domain der Admin-Adresse ist immer erlaubt; ohne konfigurierte Domain bleibt Enforcement aus. **Sicherheits-Log:** eigene Tabelle mit Akteur, IP, User-Agent, Request und Kontext für Anmeldungen, Konten, Rollen, App-Passwörter, Plugins und Themes; 180 Tage, CSV-Export. **Core-Sicherheitsupdates erzwingen:** Minor-/Security-Releases derselben `X.Y`-Reihe laufen durch, auch wenn ein Management-Tool (z. B. Installatron) Core-Updates abschaltet. Reiter **Konten & Sicherheit** und **Sicherheits-Log** auf der Werkzeuge-Seite. |
 | **Datenschutzseite aus CPT** | Macht Posts eines Custom Post Types als Datenschutzseite wählbar (WordPress erlaubt nativ nur `page`). |
 | **301-Redirects** | Explizite Pfad-zu-Pfad-Redirects aus der Konfiguration (deckt Slug-Umbenennungen root-basierter CPTs ab, bei denen WPs Alt-Slug-Redirect nicht greift). |
 | **Settings-UI** | **Werkzeuge → WebAudits Suite**: Status-Übersicht aller konfigurierten Module (wirksame, gemergte Werte) plus Formular für die operativen Werte. Zweisprachig — Englisch/Deutsch folgt der Sprache des Admin-Benutzers. |
@@ -45,6 +46,8 @@ Gebaut für den Stack **WordPress + Etch + Automatic.css + Pressidium Cookie Con
 3. **Werkzeuge → WebAudits Suite** in wp-admin öffnen: Modul-Übersicht prüfen, operative Werte setzen (GTM-/GA4-ID, CSP-Modus, Schalter).
 
 Das war's — kein Aktivierungs-Screen, keine Datenbank-Migration.
+
+**Umstieg von Etch Security:** `etch-security.php` aus `mu-plugins/` löschen (bzw. das Plugin entfernen). Einstellungen, Sicherheits-Log und Tabelle übernimmt die Suite unverändert. Solange die alte Datei geladen ist, bleibt das Modul aus und der Admin zeigt einen Hinweis — es läuft also nie doppelt.
 
 ## Konfiguration — drei Ebenen
 

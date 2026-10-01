@@ -27,6 +27,7 @@ Built for the stack **WordPress + Etch + Automatic.css + Pressidium Cookie Conse
 | **Admin cleanup** | Removes dashboard widgets, welcome panel and a configurable list of plugin widgets; hides empty containers. |
 | **Comments off** | Complete: frontend closed, existing comments hidden, admin menu/adminbar entries removed, REST endpoints removed, feed links stripped from `<head>`. |
 | **Login hardening** | Generic login error (no username enumeration), `DISALLOW_FILE_EDIT`, sortable "Last login" column in the users list. |
+| **Accounts & security** (until 3.5 the separate plugin "Etch Security") | **User guard:** new accounts only with an allowed e-mail domain. Two layers: REST, profile and registration reject foreign addresses; a backstop on `user_register`/`set_user_role` also catches `wp_insert_user()` and privilege escalation. A foreign account is **neutralised, not deleted** (role removed, random password, sessions destroyed, mail to the admin address) — it stays as evidence. The admin address's domain is always allowed; without a configured domain enforcement stays off. **Security log:** own table with actor, IP, user agent, request and context for logins, accounts, roles, application passwords, plugins and themes; 180 days, CSV export. **Enforce core security updates:** minor/security releases of the same `X.Y` branch go through even when a management tool (e.g. Installatron) disables core updates. Tabs **Accounts & security** and **Security log** on the Tools page. |
 | **Privacy policy from CPT** | Makes posts of a custom post type selectable as the privacy policy page (WordPress natively only allows `page`). |
 | **301 redirects** | Explicit path-to-path redirects from config (covers root-based CPT slug renames where WP's old-slug redirect doesn't fire). |
 | **Settings UI** | **Tools → WebAudits Suite**: status overview of all configured modules (effective, merged values) plus a form for the operational values. Bilingual — English/German follows the admin user's locale. |
@@ -45,6 +46,8 @@ Built for the stack **WordPress + Etch + Automatic.css + Pressidium Cookie Conse
 3. Review **Tools → WebAudits Suite** in wp-admin: check the module overview, set the operational values (GTM/GA4 ID, CSP mode, switches).
 
 That's it — no activation screen, no database migration.
+
+**Coming from Etch Security:** delete `etch-security.php` from `mu-plugins/` (or remove the plugin). Settings, security log and table carry over unchanged. While the old file is still loaded the module stays off and the admin shows a notice — it never runs twice.
 
 ## Configuration — three layers
 
