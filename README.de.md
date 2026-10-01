@@ -58,12 +58,14 @@ Werte lösen in dieser Reihenfolge auf (später gewinnt):
 
 Mit `report-only` starten (Default). Die Browser-Konsole über alle Seitentypen beobachten; sobald **null** Violations gemeldet werden, in der UI auf `enforce` schalten. Der Nonce-Buffer der Suite deckt Builder-Inline-Scripts ab — die meisten Sites brauchen keinerlei Policy-Anpassung.
 
+**Inline-Event-Handler** (`onload="…"` usw.) erlaubt eine Nonce nicht. Für bekannte, harmlose Handler setzt die Suite `'unsafe-hashes'` plus SHA-256 des exakten Handler-Texts (`csp_handler_hashes`, Standard: das verzögerte CSS-Laden `this.media='all';this.onload=null` von Borlabs Cookie, Perfmatters u. a.). Alle anderen Inline-Handler bleiben verboten. `<link rel="preload" as="script">` und `modulepreload` bekommen ebenfalls die Nonce. `upgrade-insecure-requests` steht nur im erzwungenen Header (im Report-Only-Header wirkt es nicht und Chrome meldet dafür auf jeder Seite einen Konsolenfehler).
+
 **Eingeloggte Administratoren** lassen sich über **CSP für Administratoren** (`csp_admins`: `same` | `report-only` | `off`, Standard `same`) lockern. Sinnvoll, wenn ein reines Admin-Werkzeug im Frontend `eval` braucht, z. B. das Automatic.css-Frontend-Dashboard. Besucher bekommen immer `csp_mode`; der separate `frame-ancestors`-Header bleibt für alle erzwungen.
 
 ## Self-Update — wie es funktioniert und warum es sicher ist
 
-- Ein WP-Cron-Event (2×/Tag) fragt `GET /repos/tobiashaas/webaudits-suite/releases/latest` ab — anonym, **kein Token, kein Secret auf der Kundensite**.
-- Ist der Release-Tag neuer als die laufende `WEBAUDITS_SUITE_VERSION`, wird die Rohdatei aus dem getaggten Commit geladen.
+- Ein WP-Cron-Event (2×/Tag) lädt `webaudits-suite.php` von `raw.githubusercontent.com/…/main` und liest die Version aus der Datei — anonym, **kein Token, kein Secret auf der Kundensite**. (Die GitHub-API ist pro IP auf 60 Anfragen/Stunde begrenzt; auf Shared Hosting lief der Updater darüber nie.)
+- Ist die Version auf `main` neuer als die laufende `WEBAUDITS_SUITE_VERSION`, wird genau diese Datei geprüft und eingesetzt. **`main` ist immer das aktuelle Release.**
 - Bevor irgendetwas ersetzt wird, muss der Download **alle** Prüfungen bestehen: beginnt mit `<?php`, plausible Größe, enthält den exakten neuen Versions-Marker, Klammer-Balance und ein echter PHP-Parse-Check (`token_get_all(..., TOKEN_PARSE)`) — eine kaputte Must-Use-Datei würde die ganze Site lahmlegen, deshalb geht nichts Unvalidiertes live.
 - Der Tausch ist atomar (`.new` → rename), die Vorversion bleibt als `webaudits-suite.php.bak` für sofortiges Rollback liegen.
 - Es wird nur `webaudits-suite.php` angefasst — `webaudits-config.php` und die DB-Option bleiben unberührt.
@@ -72,7 +74,7 @@ Mit `report-only` starten (Default). Die Browser-Konsole über alle Seitentypen 
 ## Release-Flow (Maintainer)
 
 1. `webaudits-suite.php` ändern — **beides** bumpen: `WEBAUDITS_SUITE_VERSION` und den `Version:`-Header (müssen übereinstimmen; der Updater prüft den Marker).
-2. Commit, Tag `vX.Y.Z`, GitHub-Release anlegen.
+2. Commit und Push auf `main` (= Release für alle Sites); Tag `vX.Y.Z` zur Nachvollziehbarkeit.
 3. Fertig — jede Site zieht es innerhalb von ~12 Stunden (oder sofort über den Button).
 
 ## Bewusst nicht enthalten

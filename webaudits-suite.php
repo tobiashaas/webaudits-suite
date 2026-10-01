@@ -7,7 +7,7 @@
  *              security.txt, theme-color, Bild-Loading-Fixes, LocalBusiness-
  *              Schema aus CPT, consent-gated GTM + WS-Form-Lead-Bridge.
  *              Admin-Übersicht: Werkzeuge → WebAudits Suite.
- * Version: 3.4.0
+ * Version: 3.5.0
  * Author: WebAudits
  *
  * 3.1: frame_ancestors — fremde Origins dürfen (optional nur auf bestimmten
@@ -69,6 +69,10 @@ function webaudits_file_config() {
         // 'off' z. B., wenn ein Admin-Werkzeug im Frontend eval braucht (ACSS-Dashboard).
         // Besucher bleiben unberührt; frame-ancestors bleibt immer erzwungen.
         'csp_admins'        => 'same',                      // 'same' | 'report-only' | 'off'
+        // Inline-Event-Handler, die per Hash erlaubt werden ('unsafe-hashes' + sha256).
+        // Nur exakte Handler-Texte, keine Muster. Standard: das verzögerte CSS-Laden
+        // (<link media="print" onload="…">), das Borlabs Cookie, Perfmatters u. a. nutzen.
+        'csp_handler_hashes' => array("this.media='all';this.onload=null", "this.media='all'", "this.onload=null;this.media='all'"),
         'security_contact'  => 'mailto:CONTACT@EXAMPLE.COM',// '' = keine security.txt-Route
         'security_expires'  => '2027-01-01T00:00:00.000Z',  // RFC 9116: <= 1 Jahr, vorher erneuern
         'block_xmlrpc'      => true,
@@ -348,7 +352,13 @@ add_action('send_headers', function () {
     if (webaudits_csp_effective_mode() === 'off' || is_admin() || headers_sent()) return;
     if (webaudits_is_etch_editor()) return;   // Builder braucht eval + ws-Bridge
     $n = webaudits_csp_nonce();
-    $csp = implode('; ', array(
+    $enforce = webaudits_csp_effective_mode() === 'enforce';
+    // Erlaubte Inline-Handler als Hash (nur exakt diese Texte; alle anderen on*= bleiben verboten).
+    $hashes = '';
+    foreach ((array) webaudits_cfg('csp_handler_hashes', array()) as $src) {
+        if (is_string($src) && $src !== '') $hashes .= " 'sha256-" . base64_encode(hash('sha256', $src, true)) . "'";
+    }
+    $directives = array(
         "default-src 'self'",
         "base-uri 'self'",
         "object-src 'none'",
@@ -358,16 +368,19 @@ add_action('send_headers', function () {
         // ignorieren dann 'unsafe-inline' und https: — reine Alt-Browser-
         // Fallbacks, Google-Muster). Jedes script-Tag bekommt die Nonce im
         // Output-Buffer -> externe Skripte laufen ohne Allowlist-Pflege.
-        "script-src 'self' 'nonce-$n' 'strict-dynamic' 'unsafe-inline' https:",
+        "script-src 'self' 'nonce-$n' 'strict-dynamic'" . ($hashes ? " 'unsafe-hashes'$hashes" : '') . " 'unsafe-inline' https:",
         "style-src 'self' 'unsafe-inline'",   // Builder-Inline-style=""-Attribute
         "img-src 'self' data: https:",
         "font-src 'self' data:",
         "connect-src 'self' https:",
         "frame-src 'self' https:",
         "worker-src 'self' blob:",
-        "upgrade-insecure-requests",
-    ));
-    $name = webaudits_csp_effective_mode() === 'enforce' ? 'Content-Security-Policy' : 'Content-Security-Policy-Report-Only';
+    );
+    // upgrade-insecure-requests wirkt nur erzwungen; im Report-Only-Header meldet
+    // Chrome dafür auf jeder Seite einen Konsolenfehler.
+    if ($enforce) $directives[] = 'upgrade-insecure-requests';
+    $csp = implode('; ', $directives);
+    $name = $enforce ? 'Content-Security-Policy' : 'Content-Security-Policy-Report-Only';
     header("$name: $csp");
 }, 1000);
 
@@ -421,6 +434,15 @@ function webaudits_filter_output($html) {
             if (stripos($a, 'nonce=') !== false) return $m[0];
             if (preg_match('#type\s*=\s*["\']?(application/(ld\+)?json|text/(template|html))#i', $a)) return $m[0];
             return '<script nonce="' . $n . '"' . $a . '>';
+        }, $html);
+        // (c) Vorab-Laden von Skripten (<link rel="preload|modulepreload" as="script">)
+        // wird ebenfalls gegen script-src geprüft und braucht die Nonce (z. B. Borlabs-Config).
+        $html = preg_replace_callback('#<link\b([^>]*)>#i', function ($m) use ($n) {
+            $a = $m[1];
+            if (stripos($a, 'nonce=') !== false) return $m[0];
+            if (!preg_match('#\brel\s*=\s*["\']?(modulepreload|preload)\b#i', $a)) return $m[0];
+            if (stripos($a, 'modulepreload') === false && !preg_match('#\bas\s*=\s*["\']?script\b#i', $a)) return $m[0];
+            return '<link nonce="' . $n . '"' . $a . '>';
         }, $html);
     }
     return $html;
@@ -724,7 +746,7 @@ add_filter('wp_dropdown_pages', function ($html, $args) {
 // Kanonisches Repo (öffentlich, kein Token nötig). Ein Release = ein Tag vX.Y.Z;
 // der Cron vergleicht 2x täglich und ersetzt NUR webaudits-suite.php — die
 // Site-Konfig (webaudits-config.php) und die DB-Option bleiben unberührt.
-const WEBAUDITS_SUITE_VERSION = '3.4.0';
+const WEBAUDITS_SUITE_VERSION = '3.5.0';
 const WEBAUDITS_SUITE_REPO = 'tobiashaas/webaudits-suite';
 
 add_action('init', function () {
