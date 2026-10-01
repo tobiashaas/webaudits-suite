@@ -1,10 +1,10 @@
 # WebAudits Suite
 
-**Ein einziges Must-Use-Plugin für die komplette WordPress-Hardening- und Tracking-Basis** — Security-Header, nonce-basierte CSP, Admin-Aufräumen, Kommentare-aus, consent-gated Google Tag Manager *oder* GA4-direkt (gegenseitig exklusiv, mit eingebauter Doppel-Tracking-Sperre) und ein Self-Update-Mechanismus, der jede Site automatisch auf dem neuesten Release hält.
+**Ein selbst aktualisierendes WordPress-Plugin für die Sicherheits- und Tracking-Basis einer Website** — Security-Header, nonce-basierte Content-Security-Policy, Versions-Leak-Fixes, consent-gated Google Tag Manager *oder* GA4, Admin-Aufräumen, Konten-Allowlist mit Sicherheits-Log und erzwungene Core-Sicherheitsupdates.
 
 🇬🇧 *English version (main): [README.md](README.md)*
 
-Gebaut für den Stack **WordPress + Etch + Automatic.css + Pressidium Cookie Consent + SEOPress + WS Form** — läuft aber auf jeder WordPress-Installation. Kein Build-Schritt, kein Composer, keine Abhängigkeiten: zwei einfache PHP-Dateien.
+Läuft auf jeder WordPress-Site. Kein Build-Schritt, kein Composer, keine Abhängigkeiten: zwei PHP-Dateien (das Plugin und die Konfiguration der Site). Im Einsatz auf Sites mit Etch, Bricks, Automatic.css, SEOPress und WS Form, mit Pressidium Cookie Consent, Borlabs Cookie oder iubenda als Consent-Manager.
 
 ---
 
@@ -13,41 +13,65 @@ Gebaut für den Stack **WordPress + Etch + Automatic.css + Pressidium Cookie Con
 | Modul | Was es tut |
 |---|---|
 | **Security-Header** | HSTS (optional `preload`), `X-Content-Type-Options: nosniff`, `X-Frame-Options`, `Referrer-Policy: same-origin`, `Permissions-Policy`, COOP/CORP, `X-Permitted-Cross-Domain-Policies`; entfernt `X-Powered-By`. Bewusst **kein** COEP (bräche externe Embeds). |
-| **Einbettung (`frame_ancestors`)** | Erlaubt benannten fremden Origins, die Site per `<iframe>` einzubetten — optional nur auf bestimmten Pfaden (z. B. ein LMS, das die Datenschutzseite einbindet). `X-Frame-Options` kann keine fremde Origin ausdrücken (`ALLOW-FROM` ist tot), entfällt deshalb auf genau diesen Antworten und wird durch einen **immer erzwungenen** `Content-Security-Policy: frame-ancestors …`-Header ersetzt — auch im `report-only`-Modus, der nichts erzwingen würde. Default: nur die eigene Origin. |
-| **Content-Security-Policy** | Nonce-basiert + `strict-dynamic`. Ein einziger Output-Buffer hängt die Per-Request-Nonce an *jedes* Script-Tag — auch an rohe Inline-Scripts von Buildern und Plugins, die die WP-Script-API umgehen — externe Skripte laufen daher ohne Allowlist-Pflege. Drei Modi: `off` → `report-only` → `enforce`. Die Etch-Builder-Ansicht (`?etch=magic`) ist automatisch ausgenommen. |
+| **Einbettung (`frame_ancestors`)** | Erlaubt benannten fremden Origins, die Site per `<iframe>` einzubetten, optional nur auf bestimmten Pfaden (z. B. ein LMS, das die Datenschutzseite einbindet). `X-Frame-Options` kann keine fremde Origin ausdrücken, entfällt deshalb auf genau diesen Antworten und wird durch einen **immer erzwungenen** `frame-ancestors`-Header ersetzt. Standard: nur die eigene Origin. |
+| **Content-Security-Policy** | Nonce-basiert + `strict-dynamic`. Ein Output-Buffer hängt die Nonce an *jedes* Script-Tag — auch an Inline-Scripts von Buildern und Plugins —, externe Skripte laufen ohne Allowlist-Pflege. Modi: `off` → `report-only` → `enforce`. Bearbeitungsansichten von Page-Buildern sind für eingeloggte Redakteure ausgenommen (siehe unten). |
 | **Versions-Leak-Fixes** | Entfernt das `generator`-Meta und Generator-Strings. |
 | **XML-RPC-Block** | `POST /xmlrpc.php` → 403; Pingback-Header und RSD-Link entfernt. |
-| **security.txt** | Liefert `/.well-known/security.txt` (RFC 9116) aus der Konfiguration — keine physische Datei nötig. |
-| **theme-color / color-scheme** | Gibt das Marken-`<meta name="theme-color">` und `color-scheme` aus. |
-| **Bild-Loading-Fix** | Erzwingt optional `loading="lazy"` (und entfernt `fetchpriority`) für Bilder mit passender Klasse — für Fälle, in denen die LCP-Heuristik von WordPress danebengreift (z. B. wenn der echte Hero ein Canvas ist). |
-| **LocalBusiness-Schema** | Optionales CPT-getriebenes `LocalBusiness`-JSON-LD (Multi-Standort) auf einer gewählten Seite. Optional `parent` (Name + URL) nennt den Rechtsträger, wenn die Site eine Marke einer größeren Firma ist (Standard: `brand_name`). Aus lassen, wenn das SEO-Plugin die Schemas besitzt. |
-| **Google Tag Manager** | Consent-gated Container: als `<script type="text/plain" data-cookiecategory="…">` gerendert, wird von Pressidium Cookie Consent erst nach Einwilligung freigeschaltet — **null Google-Requests vor Consent**, kein `noscript`-iframe. Consent-Mode-v2-Defaults (`denied`) stehen immer davor. Braucht die Pressidium-Option `page_scripts` = an. |
-| **GA4 direkt (gtag.js)** | Alternative zu GTM für einfache Sites. **Gegenseitig exklusiv:** Ist eine GTM-Container-ID gesetzt, bleibt GA4-direkt gesperrt und eine Admin-Notice erklärt warum — ein Tracking-Pfad, nie zwei (Doppel-Tracking-Sperre). |
-| **WS-Form-Lead-Bridge** | Pusht bei `wsf-submit-success` ein dataLayer-Event (z. B. `generate_lead`) mit `form_id` — bereit für einen GTM-Trigger. |
-| **Admin-Aufräumen** | Entfernt Dashboard-Widgets, Willkommens-Panel und eine konfigurierbare Liste von Plugin-Widgets; blendet leere Container aus. |
-| **Kommentare aus** | Komplett: Frontend geschlossen, Bestand ausgeblendet, Admin-Menü/Adminbar-Einträge entfernt, REST-Endpunkte entfernt, Feed-Links aus dem `<head>`. |
-| **Login-Härtung** | Generische Login-Fehlermeldung (keine Username-Enumeration), `DISALLOW_FILE_EDIT`, sortierbare „Letzter Login"-Spalte in der Benutzerliste. |
-| **Konten & Sicherheit** (bis 3.5 das eigene Plugin „Etch Security") | **User Guard:** Neue Konten nur mit erlaubter E-Mail-Domain. Zwei Schichten: REST, Profil und Registrierung lehnen fremde Adressen ab; ein Backstop auf `user_register`/`set_user_role` fängt auch `wp_insert_user()` und Rechte-Eskalation. Ein fremdes Konto wird **entschärft, nicht gelöscht** (Rolle weg, Passwort zufällig, Sessions beendet, Mail an die Admin-Adresse) — es bleibt Beweismittel. Die Domain der Admin-Adresse ist immer erlaubt; ohne konfigurierte Domain bleibt Enforcement aus. **Sicherheits-Log:** eigene Tabelle mit Akteur, IP, User-Agent, Request und Kontext für Anmeldungen, Konten, Rollen, App-Passwörter, Plugins und Themes; 180 Tage, CSV-Export. **Core-Sicherheitsupdates erzwingen:** Minor-/Security-Releases derselben `X.Y`-Reihe laufen durch, auch wenn ein Management-Tool (z. B. Installatron) Core-Updates abschaltet. Reiter **Konten & Sicherheit** und **Sicherheits-Log** auf der Werkzeuge-Seite. |
-| **Datenschutzseite aus CPT** | Macht Posts eines Custom Post Types als Datenschutzseite wählbar (WordPress erlaubt nativ nur `page`). |
-| **301-Redirects** | Explizite Pfad-zu-Pfad-Redirects aus der Konfiguration (deckt Slug-Umbenennungen root-basierter CPTs ab, bei denen WPs Alt-Slug-Redirect nicht greift). |
-| **Settings-UI** | **Werkzeuge → WebAudits Suite**: Status-Übersicht aller konfigurierten Module (wirksame, gemergte Werte) plus Formular für die operativen Werte. Zweisprachig — Englisch/Deutsch folgt der Sprache des Admin-Benutzers. |
-| **Self-Update** | Die Suite prüft 2×/Tag die [Releases](../../releases) dieses Repos und ersetzt sich selbst. Jeder Download wird vor dem Einspielen hart validiert; die Vorversion bleibt als `.bak` liegen. Manueller Prüf-Button inklusive. |
+| **security.txt** | Liefert `/.well-known/security.txt` (RFC 9116) aus der Konfiguration, sobald ein Kontakt eingetragen ist. |
+| **theme-color / color-scheme** | Gibt `<meta name="theme-color">` und `color-scheme` aus. |
+| **Bild-Loading-Fix** | Erzwingt optional `loading="lazy"` (und entfernt `fetchpriority`) für Bilder mit einer bestimmten Klasse. |
+| **LocalBusiness-Schema** | Optionales CPT-getriebenes `LocalBusiness`-JSON-LD (mehrere Standorte) auf einer Seite. Aus lassen, wenn das SEO-Plugin die Schemas liefert. |
+| **Google Tag Manager** | Consent-gated Container: als inaktives `<script type="text/plain" …>` ausgegeben, das der Consent-Manager erst nach Einwilligung freischaltet — **null Google-Requests vor Einwilligung**. Consent-Mode-v2-Defaults (`denied`) stehen immer davor. Siehe [Consent-Manager](#consent-manager). |
+| **GA4 direkt (gtag.js)** | Alternative zu GTM für einfache Sites. **Gegenseitig exklusiv:** Ist eine GTM-ID gesetzt, bleibt GA4-direkt gesperrt (Doppel-Tracking-Sperre). |
+| **WS-Form-Lead-Bridge** | Pusht bei `wsf-submit-success` ein dataLayer-Event (z. B. `generate_lead`) mit `form_id`. |
+| **Admin-Aufräumen** | Entfernt Dashboard-Widgets, Willkommens-Panel und eine konfigurierbare Liste von Plugin-Widgets. |
+| **Kommentare aus** (einschaltbar) | Komplett: Frontend geschlossen, Bestand ausgeblendet, Admin-Menü/Adminbar-Einträge und REST-Endpunkte entfernt, Feed-Links weg. |
+| **Login-Härtung** | Generische Login-Fehlermeldung, `DISALLOW_FILE_EDIT`, sortierbare „Letzter Login"-Spalte. |
+| **Konten & Sicherheit** | **User Guard:** neue Konten nur mit erlaubter E-Mail-Domain. REST, Profil und Registrierung lehnen fremde Adressen ab; ein Backstop auf `user_register`/`set_user_role` fängt auch `wp_insert_user()` und Rechte-Eskalation. Ein fremdes Konto wird **entschärft, nicht gelöscht** (Rolle weg, Passwort zufällig, Sessions beendet, Mail an die Admin-Adresse) — es bleibt Beweismittel. Die Domain der Admin-Adresse ist immer erlaubt; ohne eingetragene Domain wird nur protokolliert. **Sicherheits-Log:** eigene Tabelle mit Akteur, IP, User-Agent, Request und Kontext; 180 Tage, CSV-Export. **Core-Sicherheitsupdates:** Minor-/Security-Releases der installierten `X.Y`-Reihe laufen durch, auch wenn ein Hoster-Tool (z. B. Installatron) Core-Updates abschaltet. |
+| **Datenschutzseite aus CPT** | Macht Beiträge eines Custom Post Types als Datenschutzseite wählbar. |
+| **301-Redirects** | Explizite Pfad-zu-Pfad-Weiterleitungen aus der Konfiguration. |
+| **Settings-UI** | **Werkzeuge → WebAudits Suite**: Status aller konfigurierten Module, Formular für die operativen Werte, Reiter für Konten & Sicherheit und das Sicherheits-Log. Deutsch oder Englisch je nach Sprache des Admin-Benutzers. |
+| **Self-Update** | Prüft 2×/Tag dieses Repo und ersetzt sich nach harter Prüfung selbst; die Vorversion bleibt als `.bak`. Abschaltbar. |
 
 ## Voraussetzungen
 
-- WordPress 6.x+ (getestet bis 7.x), PHP 7.4+
-- Für consent-gated GTM: [Pressidium Cookie Consent](https://wordpress.org/plugins/pressidium-cookie-consent/) mit aktiviertem `page_scripts`
-- Alles andere läuft standalone
+- WordPress 6.0+ (im Einsatz bis 7.x), PHP 7.4+
+- Optional: ein Consent-Manager für gesteuertes Tracking (siehe unten)
 
 ## Installation
 
-1. **`webaudits-suite.php`** nach `wp-content/mu-plugins/` kopieren (Must-Use-Plugins sind auto-aktiv; Ordner ggf. anlegen).
-2. **`webaudits-config-sample.php`** als `wp-content/mu-plugins/webaudits-config.php` kopieren und die Werte der Site eintragen.
-3. **Werkzeuge → WebAudits Suite** in wp-admin öffnen: Modul-Übersicht prüfen, operative Werte setzen (GTM-/GA4-ID, CSP-Modus, Schalter).
+**Als Must-Use-Plugin (empfohlen)** — immer aktiv, nicht versehentlich abschaltbar:
 
-Das war's — kein Aktivierungs-Screen, keine Datenbank-Migration.
+1. `webaudits-suite.php` nach `wp-content/mu-plugins/` kopieren (Ordner ggf. anlegen).
+2. `webaudits-config-sample.php` als `wp-content/mu-plugins/webaudits-config.php` kopieren und die Werte eintragen.
+3. **Werkzeuge → WebAudits Suite** öffnen, Übersicht prüfen, operative Werte setzen.
 
-**Umstieg von Etch Security:** `etch-security.php` aus `mu-plugins/` löschen (bzw. das Plugin entfernen). Einstellungen, Sicherheits-Log und Tabelle übernimmt die Suite unverändert. Solange die alte Datei geladen ist, bleibt das Modul aus und der Admin zeigt einen Hinweis — es läuft also nie doppelt.
+**Als normales Plugin** — `webaudits-suite.php` nach `wp-content/plugins/webaudits-suite/` legen und aktivieren. Die `webaudits-config.php` dann in `wp-content/` ablegen (außerhalb des Plugin-Ordners, damit eine Neuinstallation sie nicht löscht). Die Suite sucht die Konfiguration in `wp-content/mu-plugins/`, `wp-content/` und neben sich selbst.
+
+Nur **einen** der beiden Wege nutzen, nie beide.
+
+**Erster Start ohne Konfigurationsdatei** ist unbedenklich: CSP startet als `report-only`, kein Tracking, keine security.txt, Kommentare bleiben an, der User Guard protokolliert nur. `site_url` und `brand_name` kommen aus den WordPress-Einstellungen.
+
+**Umstieg von Etch Security:** `etch-security.php` löschen. Einstellungen, Sicherheits-Log und Tabelle übernimmt die Suite unverändert. Solange die alte Datei geladen ist, bleibt das Modul aus und der Admin zeigt einen Hinweis — es läuft nie doppelt.
+
+## Consent-Manager
+
+`gtm_id` lädt Google Tag Manager nur in einer Form, die der Consent-Manager freischalten kann. Passenden `consent_provider` wählen:
+
+| `consent_provider` | Für | Was die Suite ausgibt |
+|---|---|---|
+| `pressidium` (Standard) | [Pressidium Cookie Consent](https://wordpress.org/plugins/pressidium-cookie-consent/) mit aktiviertem `page_scripts` | `<script type="text/plain" data-cookiecategory="analytics">` |
+| `iubenda` | iubenda | `<script type="text/plain" class="_iub_cs_activate" data-iub-purposes="4">` |
+| `custom` | jeder Consent-Manager, der `type="text/plain"`-Skripte per Attribut freischaltet | die Attribute aus `consent_script_attrs`, z. B. Cookiebot: `array('type' => 'text/plain', 'data-cookieconsent' => 'statistics')` — in der Doku des Tools unter „manuelles Blockieren von Skripten" nachsehen |
+| `none` | kein Banner (cookieloser GTM) | ein normales `<script>`; Consent Mode bleibt `denied` |
+
+Ist der gewählte Provider nicht einsatzbereit (z. B. `pressidium` ohne das Plugin), wird GTM **nicht** geladen und der Admin zeigt einen Hinweis — Tracking läuft nie versehentlich ohne Einwilligung.
+
+**Consent-Manager, die GTM selbst laden** (Borlabs Cookie, Complianz, Real Cookie Banner u. a.): `gtm_id` leer lassen und den Container vom Consent-Manager ausliefern lassen. Der Rest der Suite läuft unverändert; die CSP erlaubt den Handler für das verzögerte Borlabs-CSS bereits (siehe unten).
+
+## Page-Builder
+
+CSP und Nonce-Buffer werden für **eingeloggte Redakteure** in den Bearbeitungsansichten von Page-Buildern ausgelassen, weil Builder `eval` und eigene Vorschau-Kanäle brauchen: Etch (`?etch=magic`), Bricks (`?bricks=run`), Elementor (`?elementor-preview`), Oxygen (`?ct_builder`), Breakdance (`?breakdance=builder`, `?breakdance_iframe`), Beaver Builder (`?fl_builder`), Divi (`?et_fb`), Brizy (`?brizy-edit`, `?brizy-edit-iframe`). Besucher bekommen immer die volle Policy.
 
 ## Konfiguration — drei Ebenen
 
@@ -55,36 +79,35 @@ Werte lösen in dieser Reihenfolge auf (später gewinnt):
 
 1. **Generische Defaults** in `webaudits-suite.php` — nie editieren; der Self-Updater ersetzt diese Datei.
 2. **`webaudits-config.php`** — die Site-Werte via `define('WEBAUDITS_CONFIG_SITE', array(...))`. Überlebt jedes Update. Nur Schlüssel setzen, die vom Default abweichen.
-3. **Settings-UI** (Werkzeuge → WebAudits Suite) — die operative Teilmenge (GTM-/GA4-ID, CSP-Modus, Kommentar-/Admin-/XML-RPC-/Login-Schalter, Theme-Color, HSTS-preload) als DB-Option. **Überstimmt beide Dateien.**
+3. **Settings-UI** (Werkzeuge → WebAudits Suite) — die operative Teilmenge (GTM-/GA4-ID, CSP-Modus, Schalter, Theme-Color, HSTS-preload) als DB-Option. **Überstimmt beide Dateien.**
 
 ## CSP-Rollout
 
-Mit `report-only` starten (Default). Die Browser-Konsole über alle Seitentypen beobachten; sobald **null** Violations gemeldet werden, in der UI auf `enforce` schalten. Der Nonce-Buffer der Suite deckt Builder-Inline-Scripts ab — die meisten Sites brauchen keinerlei Policy-Anpassung.
+Mit `report-only` starten (Standard). Die Browser-Konsole über alle Seitentypen beobachten — ausgeloggt, vor **und** nach der Einwilligung im Banner. Erst bei **null** Meldungen in der UI auf `enforce` schalten.
 
-**Inline-Event-Handler** (`onload="…"` usw.) erlaubt eine Nonce nicht. Für bekannte, harmlose Handler setzt die Suite `'unsafe-hashes'` plus SHA-256 des exakten Handler-Texts (`csp_handler_hashes`, Standard: das verzögerte CSS-Laden `this.media='all';this.onload=null` von Borlabs Cookie, Perfmatters u. a.). Alle anderen Inline-Handler bleiben verboten. `<link rel="preload" as="script">` und `modulepreload` bekommen ebenfalls die Nonce. `upgrade-insecure-requests` steht nur im erzwungenen Header (im Report-Only-Header wirkt es nicht und Chrome meldet dafür auf jeder Seite einen Konsolenfehler).
+**Inline-Event-Handler** (`onload="…"` usw.) deckt eine Nonce nicht ab. Für bekannte, harmlose Handler setzt die Suite `'unsafe-hashes'` plus SHA-256 des exakten Handler-Texts (`csp_handler_hashes`; Standard: das verzögerte CSS-Laden `this.media='all';this.onload=null` von Borlabs Cookie, Perfmatters u. a.). Alle anderen Inline-Handler bleiben verboten. `<link rel="preload" as="script">` und `modulepreload` bekommen ebenfalls die Nonce. `upgrade-insecure-requests` steht nur im erzwungenen Header.
 
-**Eingeloggte Administratoren** lassen sich über **CSP für Administratoren** (`csp_admins`: `same` | `report-only` | `off`, Standard `same`) lockern. Sinnvoll, wenn ein reines Admin-Werkzeug im Frontend `eval` braucht, z. B. das Automatic.css-Frontend-Dashboard. Besucher bekommen immer `csp_mode`; der separate `frame-ancestors`-Header bleibt für alle erzwungen.
+**Eingeloggte Administratoren** lassen sich über **CSP für Administratoren** (`csp_admins`: `same` | `report-only` | `off`) lockern, z. B. für das Frontend-Dashboard von Automatic.css, das `eval` braucht. Besucher bekommen immer `csp_mode`.
 
-## Self-Update — wie es funktioniert und warum es sicher ist
+## Self-Update — wie es funktioniert und wie man es abschaltet
 
-- Ein WP-Cron-Event (2×/Tag) lädt `webaudits-suite.php` von `raw.githubusercontent.com/…/main` und liest die Version aus der Datei — anonym, **kein Token, kein Secret auf der Kundensite**. (Die GitHub-API ist pro IP auf 60 Anfragen/Stunde begrenzt; auf Shared Hosting lief der Updater darüber nie.)
-- Ist die Version auf `main` neuer als die laufende `WEBAUDITS_SUITE_VERSION`, wird genau diese Datei geprüft und eingesetzt. **`main` ist immer das aktuelle Release.**
-- Bevor irgendetwas ersetzt wird, muss der Download **alle** Prüfungen bestehen: beginnt mit `<?php`, plausible Größe, enthält den exakten neuen Versions-Marker, Klammer-Balance und ein echter PHP-Parse-Check (`token_get_all(..., TOKEN_PARSE)`) — eine kaputte Must-Use-Datei würde die ganze Site lahmlegen, deshalb geht nichts Unvalidiertes live.
-- Der Tausch ist atomar (`.new` → rename), die Vorversion bleibt als `webaudits-suite.php.bak` für sofortiges Rollback liegen.
-- Es wird nur `webaudits-suite.php` angefasst — `webaudits-config.php` und die DB-Option bleiben unberührt.
-- Status (Version, letzte Prüfung, verfügbares Update) steht auf der Werkzeuge-Seite, samt Button **„Jetzt auf Updates prüfen"**.
+- Ein WP-Cron-Event (2×/Tag) lädt `webaudits-suite.php` von `raw.githubusercontent.com/<update_repo>/main` und liest die Version aus der Datei — anonym, **kein Token, kein Secret auf der Site**. (Die GitHub-API erlaubt nur 60 Anfragen/Stunde pro IP; auf Shared Hosting läuft ein Updater darüber nie.)
+- Ist diese Version neuer, muss die Datei **alle** Prüfungen bestehen, bevor etwas ersetzt wird: beginnt mit `<?php`, plausible Größe, exakter Versions-Marker, Klammer-Balance und ein echter PHP-Parse (`token_get_all(..., TOKEN_PARSE)`).
+- Der Tausch ist atomar (`.new` → rename) und trifft die Datei, aus der die Suite tatsächlich läuft; die Vorversion bleibt als `.bak`.
+- Nur die Plugin-Datei wird angefasst — `webaudits-config.php` und die DB-Option nie.
+- **Man vertraut damit der Update-Quelle.** Version festhalten: `'self_update' => false` (der Button „Jetzt auf Updates prüfen" funktioniert weiter). Aus einem eigenen Fork aktualisieren: `'update_repo' => 'du/dein-fork'`.
 
 ## Release-Flow (Maintainer)
 
-1. `webaudits-suite.php` ändern — **beides** bumpen: `WEBAUDITS_SUITE_VERSION` und den `Version:`-Header (müssen übereinstimmen; der Updater prüft den Marker).
-2. Commit und Push auf `main` (= Release für alle Sites); Tag `vX.Y.Z` zur Nachvollziehbarkeit.
-3. Fertig — jede Site zieht es innerhalb von ~12 Stunden (oder sofort über den Button).
+1. `webaudits-suite.php` ändern und **beides** bumpen: `WEBAUDITS_SUITE_VERSION` und den `Version:`-Header.
+2. Commit und Push auf `main` (= Release für alle Sites), Tag `vX.Y.Z`.
+3. Sites ziehen es innerhalb von ~12 Stunden, sofort über den Button.
 
 ## Bewusst nicht enthalten
 
-- Kompression, Asset-Cache, WebP-Negotiation, statisches Blocken von `readme.html`/`license.txt`/`xmlrpc.php` → gehört in die **`.htaccess`** (bzw. Server-Konfig), nicht in PHP.
+- Kompression, Asset-Cache, WebP-Negotiation, statisches Blocken von `readme.html`/`license.txt`/`xmlrpc.php` → `.htaccess` bzw. Server-Konfig.
 - DNS-Härtung (CAA, DNSSEC), HTTP/2, `ServerTokens` → Hoster-Panel.
-- SEO-Metas und Per-Post-Schemas → das SEO-Plugin (wir nutzen SEOPress).
+- SEO-Metas und Per-Post-Schemas → das SEO-Plugin.
 
 ## Lizenz
 

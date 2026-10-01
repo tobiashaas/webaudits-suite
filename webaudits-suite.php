@@ -1,189 +1,233 @@
 <?php
 /**
- * Plugin Name: WebAudits Site Suite
- * Description: Ein mu-plugin für den ganzen WebAudits-Stack (WordPress + Etch +
- *              ACSS + Pressidium + WS Form): Security-Header + CSP (nonce,
- *              Report-Only→Enforce), Versions-Leak-Fixes, XML-RPC-Block,
- *              security.txt, theme-color, Bild-Loading-Fixes, LocalBusiness-
- *              Schema aus CPT, consent-gated GTM + WS-Form-Lead-Bridge,
- *              User Guard + Sicherheits-Log + erzwungene Core-Sicherheitsupdates.
- *              Admin-Übersicht: Werkzeuge → WebAudits Suite.
- * Version: 3.6.1
- * Author: WebAudits
+ * Plugin Name: WebAudits Suite
+ * Plugin URI: https://github.com/tobiashaas/webaudits-suite
+ * Description: Security and tracking baseline for any WordPress site: security
+ *              headers + nonce-based CSP (report-only → enforce), version-leak
+ *              fixes, XML-RPC block, security.txt, consent-gated GTM or GA4,
+ *              admin cleanup, account allowlist + security log, forced core
+ *              security updates. Self-updating. Tools → WebAudits Suite.
+ * Version: 4.0.0
+ * Requires at least: 6.0
+ * Requires PHP: 7.4
+ * Author: Tobias Haas
+ * Author URI: https://github.com/tobiashaas
+ * License: MIT
+ * License URI: https://opensource.org/licenses/MIT
+ * Update URI: https://github.com/tobiashaas/webaudits-suite
  *
- * 3.6.1: Admin-Übersicht, Zeile 301-Redirects: "$k→$v" las PHP als Variable $k→
- *      (Bytes > 0x7F gehören zum Bezeichner) → Warnung, Quellpfad fehlte.
- * 3.6: Etch Security eingegliedert (Abschnitt 15) — User Guard (Domain-Allowlist,
- *      fremde Konten werden entschärft, nicht gelöscht), Sicherheits-Log mit CSV
- *      und erzwungene Core-Sicherheitsupdates. Gleiche Optionen und Tabelle wie
- *      Etch Security 1.1.1, Bestandsdaten bleiben. Solange die alte
- *      etch-security.php noch geladen ist, bleibt das Modul aus (Hinweis im Admin).
+ * 4.0: Usable on any site, not only ours. Runs as mu-plugin or regular plugin
+ *      (the updater writes to the running file, the config is looked up in
+ *      mu-plugins/, wp-content/ and next to the plugin). Safe first run without
+ *      a config: site_url/brand_name fall back to the WordPress settings, no
+ *      security.txt without a real contact, comments stay ON by default
+ *      (disable_comments is now opt-in). consent_provider 'custom' with
+ *      consent_script_attrs for any consent manager. CSP is skipped for logged-in
+ *      editors in the editing views of Etch, Bricks, Elementor, Oxygen,
+ *      Breakdance, Beaver Builder, Divi and Brizy. 'self_update' => false pins the
+ *      version, 'update_repo' points the updater to a fork. Code comments in
+ *      English; new security-log details use English keys.
+ * 3.6.1: Admin overview, 301-redirects row: PHP parsed "$k→$v" as the variable $k→
+ *      (bytes > 0x7F are part of an identifier) → warning, source path missing.
+ * 3.6: Etch Security merged in (section 15) — User Guard (domain allowlist,
+ *      foreign accounts are neutralised, not deleted), security log with CSV
+ *      and forced core security updates. Same options and table as
+ *      Etch Security 1.1.1, existing data is kept. As long as the old
+ *      etch-security.php is still loaded, the module stays off (admin notice).
  *
- * 3.1: frame_ancestors — fremde Origins dürfen (optional nur auf bestimmten
- *      Pfaden) diese Site einbetten. X-Frame-Options kennt keine fremde Origin
- *      (ALLOW-FROM ist tot), also wird XFO auf genau diesen Antworten
- *      weggelassen und stattdessen ein EIGENER, immer erzwungener
- *      `Content-Security-Policy: frame-ancestors …`-Header gesendet — auch im
- *      Report-Only-Modus, der nichts erzwingen würde.
+ * 3.1: frame_ancestors — foreign origins may embed this site (optionally only
+ *      on specific paths). X-Frame-Options cannot express a foreign origin
+ *      (ALLOW-FROM is dead), so XFO is omitted on exactly these responses
+ *      and a SEPARATE, always-enforced
+ *      `Content-Security-Policy: frame-ancestors …` header is sent instead —
+ *      even in Report-Only mode, which would enforce nothing.
  *
- * 2.1: Admin/Backend-Modul — Dashboard-Bereinigung (Widgets/Willkommens-Panel/
- *      Plugin-Widgets), sortierbare Letzter-Login-Spalte, DISALLOW_FILE_EDIT,
- *      generische Login-Fehlermeldung. Alles einzeln per Config schaltbar.
- * 2.2: disable_comments-Schalter — Kommentare komplett aus (Frontend, Bestand,
- *      Admin-Menü/Adminbar, REST-Endpunkte).
- * 2.6: Settings-UI (Werkzeuge → WebAudits Suite): operative Werte (GTM-/GA4-ID,
- *      CSP-Modus, Schalter) sind im Admin editierbar; DB-Option gewinnt über den
- *      Datei-Default. Neues GA4-direkt-Modul (gtag) als Alternative zu GTM —
- *      gegenseitig exklusiv (GTM gewinnt, Admin-Notice warnt vor Doppel-Tracking).
- * 2.7: Zweisprachig (de/en) — Admin-UI nach Benutzersprache, Frontend-Strings
- *      nach Site-Locale (webaudits_txt). Übersicht zeigt nur konfigurierte
- *      Module (inaktive ohne Details werden ausgeblendet).
- * 3.0: Code/Konfig-Trennung — Site-Werte leben in webaudits-config.php daneben
- *      (define('WEBAUDITS_CONFIG_SITE', array(...))), diese Datei ist generisch
- *      und wird per Self-Updater aus GitHub-Releases aktuell gehalten
- *      (github.com/tobiashaas/webaudits-suite — DORT ändern + Release taggen;
- *      diese Kopie in etch-intelligence ist nur ein Mirror fürs Erst-Deployment).
- * 2.4: privacy_cpt — CPT in WP-Settings → Datenschutz waehlbar (wp_dropdown_pages-Filter).
- * 2.3: CSP + Output-Buffer werden in der Etch-Builder-Ansicht (?etch=magic)
- *      NICHT gesendet — sonst blockiert CSP eval + Bridge-WebSocket und der
- *      Builder lädt nicht. Anonyme Besucher unberührt.
+ * 2.1: Admin/backend module — dashboard cleanup (widgets/welcome panel/
+ *      plugin widgets), sortable last-login column, DISALLOW_FILE_EDIT,
+ *      generic login error message. Each switchable via config.
+ * 2.2: disable_comments switch — comments fully off (frontend, existing ones,
+ *      admin menu/admin bar, REST endpoints).
+ * 2.6: Settings UI (Tools → WebAudits Suite): operational values (GTM/GA4 ID,
+ *      CSP mode, switches) are editable in the admin; the DB option wins over the
+ *      file default. New GA4-direct module (gtag) as an alternative to GTM —
+ *      mutually exclusive (GTM wins, an admin notice warns about double tracking).
+ * 2.7: Bilingual (de/en) — admin UI follows the user language, frontend strings
+ *      follow the site locale (webaudits_txt). The overview shows only configured
+ *      modules (inactive ones without details are hidden).
+ * 3.0: Code/config split — site values live in webaudits-config.php next to it
+ *      (define('WEBAUDITS_CONFIG_SITE', array(...))); this file is generic
+ *      and kept current by the self-updater from GitHub releases
+ *      (github.com/tobiashaas/webaudits-suite — change it THERE + tag a release).
+ * 2.4: privacy_cpt — CPT selectable in WP Settings → Privacy (wp_dropdown_pages filter).
+ * 2.3: CSP + output buffer are NOT sent in the Etch builder view (?etch=magic)
+ *      — otherwise CSP blocks eval + the bridge WebSocket and the builder
+ *      won't load. Anonymous visitors are unaffected.
  *
- * INSTALL: Konfig unten pro Site anpassen, Datei nach wp-content/mu-plugins/
- * kopieren (auto-aktiv). ERSETZT die Einzeldateien mu-plugin-security-headers,
- * mu-plugin-csp sowie separate Performance-/Schema-/GTM-Dateien — alte Dateien
- * löschen, sonst doppelte Header/Buffer!
- * Statische Ebene (Kompression, Asset-Cache, readme/license/xmlrpc-Block für
- * Apache) bleibt in der .htaccess (htaccess-hardening.txt).
+ * INSTALL: adjust the config per site, copy the file to wp-content/mu-plugins/
+ * (auto-active). REPLACES the standalone files mu-plugin-security-headers,
+ * mu-plugin-csp and separate performance/schema/GTM files — delete the old
+ * files, otherwise headers/buffers are doubled!
+ * The static layer (compression, asset cache, readme/license/xmlrpc block for
+ * Apache) stays in .htaccess (htaccess-hardening.txt).
  */
 if (!defined('ABSPATH')) exit;
 
-// ============================================================ KONFIG
-// Generische Defaults. SITE-Werte gehören NICHT hierher, sondern in die
-// Datei webaudits-config.php im selben Ordner (Vorlage: webaudits-config-sample.php):
+// ============================================================ CONFIG
+// Generic defaults. SITE values do NOT belong here but in the file
+// webaudits-config.php in the same folder (template: webaudits-config-sample.php):
 //   define('WEBAUDITS_CONFIG_SITE', array('site_url' => ..., ...));
-// Sie überschreiben die Defaults Schlüssel für Schlüssel und überleben
-// jedes Self-Update (das nur DIESE Datei ersetzt).
+// They override the defaults key by key and survive every
+// self-update (which replaces only THIS file).
 function webaudits_file_config() {
     static $cfg = null;
     if ($cfg !== null) return $cfg;
     $defaults = array(
         // --- Site ---
-        'site_url'          => 'https://EXAMPLE.COM',       // ohne Slash am Ende
-        'brand_name'        => 'EXAMPLE',                   // Schema/Anzeige
-    
-        // --- Security-Header ---
-        'hsts_preload'      => false,                       // erst nach Subdomain-Audit + www-Check!
+        'site_url'          => '',                          // no trailing slash; '' = home_url()
+        'brand_name'        => '',                          // schema/display; '' = site title
+
+        // --- Security headers ---
+        'hsts_preload'      => false,                       // only after a subdomain audit + www check!
         'csp_mode'          => 'report-only',               // 'report-only' | 'enforce' | 'off'
-        // Modus für eingeloggte Administratoren (manage_options). 'same' = wie csp_mode.
-        // 'off' z. B., wenn ein Admin-Werkzeug im Frontend eval braucht (ACSS-Dashboard).
-        // Besucher bleiben unberührt; frame-ancestors bleibt immer erzwungen.
+        // Mode for logged-in administrators (manage_options). 'same' = like csp_mode.
+        // 'off' e.g. when an admin tool needs eval on the frontend (ACSS dashboard).
+        // Visitors are unaffected; frame-ancestors always stays enforced.
         'csp_admins'        => 'same',                      // 'same' | 'report-only' | 'off'
-        // Inline-Event-Handler, die per Hash erlaubt werden ('unsafe-hashes' + sha256).
-        // Nur exakte Handler-Texte, keine Muster. Standard: das verzögerte CSS-Laden
-        // (<link media="print" onload="…">), das Borlabs Cookie, Perfmatters u. a. nutzen.
+        // Inline event handlers allowed by hash ('unsafe-hashes' + sha256).
+        // Exact handler texts only, no patterns. Default: deferred CSS loading
+        // (<link media="print" onload="…">) as used by Borlabs Cookie, Perfmatters and others.
         'csp_handler_hashes' => array("this.media='all';this.onload=null", "this.media='all'", "this.onload=null;this.media='all'"),
-        'security_contact'  => 'mailto:CONTACT@EXAMPLE.COM',// '' = keine security.txt-Route
-        'security_expires'  => '2027-01-01T00:00:00.000Z',  // RFC 9116: <= 1 Jahr, vorher erneuern
+        'security_contact'  => '',                          // e.g. 'mailto:security@example.com'; '' = no security.txt route
+        'security_expires'  => '2027-01-01T00:00:00.000Z',  // RFC 9116: <= 1 year, renew before then
         'block_xmlrpc'      => true,
 
-        // --- Framing: wer darf diese Site in einen iframe stecken? ---
-        // Default = niemand ausser der eigenen Origin (X-Frame-Options:
+        // --- Framing: who may put this site in an iframe? ---
+        // Default = nobody except the own origin (X-Frame-Options:
         // SAMEORIGIN + frame-ancestors 'self').
-        // 'origins' = zusaetzlich erlaubte fremde Origins (Schema + Host, ohne
-        // Pfad, ohne Slash am Ende). 'paths' = auf welche Pfade die Ausnahme
-        // begrenzt ist (ohne Slash am Ende, leeres Array = site-weit).
-        // Auf den passenden Antworten faellt X-Frame-Options WEG — der Header
-        // kann keine fremde Origin erlauben (ALLOW-FROM ist in allen aktuellen
-        // Browsern wirkungslos) und wuerde die Einbettung sonst blockieren.
+        // 'origins' = additionally allowed foreign origins (scheme + host, no
+        // path, no trailing slash). 'paths' = which paths the exception is
+        // limited to (no trailing slash, empty array = site-wide).
+        // On matching responses X-Frame-Options is DROPPED — the header
+        // cannot allow a foreign origin (ALLOW-FROM has no effect in any current
+        // browser) and would otherwise block the embedding.
         'frame_ancestors'   => array(
-            'origins' => array(),   // z. B. array('https://lms.example.com')
-            'paths'   => array(),   // z. B. array('/datenschutz', '/impressum')
+            'origins' => array(),   // e.g. array('https://lms.example.com')
+            'paths'   => array(),   // e.g. array('/datenschutz', '/impressum')
         ),
 
         // --- Foundations ---
-        'theme_color'       => '',                          // z. B. '#E30613'; '' = aus
+        'theme_color'       => '',                          // e.g. '#E30613'; '' = off
         'color_scheme'      => 'light',
-    
+
         // --- Performance ---
-        // img-Klassen, die NIE eager/fetchpriority=high laden sollen (WPs
-        // LCP-Heuristik greift daneben, wenn der echte Hero ein Canvas ist).
-        'force_lazy_classes' => array(),                    // z. B. array('bignum__media')
-    
-        // --- Schema: LocalBusiness aus Standort-CPT (auf einer Seite) ---
+        // img classes that must NEVER load eager/fetchpriority=high (WP's
+        // LCP heuristic misfires when the real hero is a canvas).
+        'force_lazy_classes' => array(),                    // e.g. array('bignum__media')
+
+        // --- Schema: LocalBusiness from a locations CPT (on one page) ---
         'localbusiness'     => array(
             'enabled'   => false,
             'page'      => 'kontakt',                       // is_page(slug)
             'post_type' => 'standorte',
-            'fields'    => array(                            // CPT-Metakeys
+            'fields'    => array(                            // CPT meta keys
                 'street' => 'strasse_nr',
                 'zip'    => 'postleitzahl',
                 'city'   => 'ort',
                 'phone'  => 'telefon',
             ),
-            'image'     => '',                              // z. B. og-default.png-URL
-            // Rechtsträger, wenn die Site eine Marke/Sub-Brand ist (Google ordnet die
-            // Adressen dann dem Firmenprofil zu). Leer = brand_name + site_url.
+            'image'     => '',                              // e.g. og-default.png URL
+            // Legal entity, if the site is a brand/sub-brand (Google then maps the
+            // addresses to the company profile). Empty = brand_name + site_url.
             'parent'    => array('name' => '', 'url' => ''),
         ),
-    
-        // --- Tracking: GTM consent-gated (Pressidium, page_scripts muss AN sein) ---
-        'gtm_id'            => '',                          // 'GTM-XXXXXXX'; '' = aus
-        // GA4 DIREKT per gtag (ohne GTM). Exklusiv zu gtm_id — ist BEIDES gesetzt,
-        // gewinnt GTM und GA4-direkt bleibt aus (Doppel-Tracking-Sperre + Notice).
-        'ga4_id'            => '',                          // 'G-XXXXXXXXXX'; '' = aus
-        'consent_category'  => 'analytics',                 // Pressidium-Kategorie (nur consent_provider=pressidium)
-        // Consent-Manager, der die text/plain-Scripts nach Einwilligung aktiviert:
-        //   'pressidium' (Default) | 'iubenda' | 'none' (GTM lädt cookielos via Consent Mode)
+
+        // --- Tracking: GTM consent-gated (Pressidium, page_scripts must be ON) ---
+        'gtm_id'            => '',                          // 'GTM-XXXXXXX'; '' = off
+        // GA4 DIRECTLY via gtag (without GTM). Exclusive with gtm_id — if BOTH are set,
+        // GTM wins and GA4-direct stays off (double-tracking lock + notice).
+        'ga4_id'            => '',                          // 'G-XXXXXXXXXX'; '' = off
+        'consent_category'  => 'analytics',                 // Pressidium category (consent_provider=pressidium only)
+        // Consent manager that activates the text/plain scripts after consent:
+        //   'pressidium' (default) | 'iubenda' | 'custom' (attributes below)
+        //   | 'none' (GTM loads cookieless via Consent Mode)
+        // Consent managers that load GTM themselves (Borlabs Cookie, Complianz,
+        // Real Cookie Banner, …): leave gtm_id empty instead.
         'consent_provider'  => 'pressidium',
-        'iubenda_purposes'  => '4',                         // iubenda Purpose-ID(s) f. Measurement (nur consent_provider=iubenda)
-        // WS-Form-Bridge: pusht Event bei wsf-submit-success. 'generate_lead' wenn
-        // jedes Formular ein Lead ist; 'wsf_submit' wenn der Container per form_id
-        // entscheidet (Multi-Formular-Sites). '' = Bridge aus.
+        'iubenda_purposes'  => '4',                         // iubenda purpose ID(s) for measurement (consent_provider=iubenda only)
+        // consent_provider=custom: attributes of the inert GTM <script>, e.g. Cookiebot:
+        //   array('type' => 'text/plain', 'data-cookieconsent' => 'statistics')
+        'consent_script_attrs' => array(),
+        // WS Form bridge: pushes an event on wsf-submit-success. 'generate_lead' if
+        // every form is a lead; 'wsf_submit' if the container decides by form_id
+        // (multi-form sites). '' = bridge off.
         'wsf_bridge_event'  => 'generate_lead',
-    
+
         // --- Admin/Backend ---
-        'admin_cleanup'        => true,   // Dashboard-Widgets + Willkommens-Panel raus
-        // Plugin-Widgets zusätzlich entfernen (remove_meta_box auf nicht vorhandene
-        // IDs ist ein No-Op — Liste darf großzügig sein):
+        'admin_cleanup'        => true,   // remove dashboard widgets + welcome panel
+        // Additionally remove plugin widgets (remove_meta_box on non-existent
+        // IDs is a no-op — the list may be generous):
         'dashboard_remove_extra' => array(
             'seopress-dashboard-widget',           // SEOPress
             'wordfence_activity_report_widget',    // Wordfence
             'woocommerce_dashboard_status',        // WooCommerce
             'woocommerce_dashboard_recent_reviews',
             'wc_admin_dashboard_setup',
-            'yoast_db_widget',                     // Yoast (Fremd-Setups)
+            'yoast_db_widget',                     // Yoast (third-party setups)
             'rg_forms_dashboard',                  // Gravity Forms
             'bbp-dashboard-right-now',             // bbPress
         ),
-        'last_login_column'    => true,   // Benutzer-Liste: Spalte "Letzter Login" (sortierbar)
-        'disable_file_editor'  => true,   // Theme-/Plugin-Editor im Admin aus (DISALLOW_FILE_EDIT)
-        'generic_login_errors' => true,   // Login verrät nicht, ob der Benutzername existiert
-        // Kommentare KOMPLETT aus (Frontend zu, Bestand ausgeblendet, Admin-Menü/
-        // Adminbar weg, REST-Endpunkte entfernt). Nur aktivieren, wenn die Site
-        // wirklich keine Kommentare nutzt.
-        'disable_comments'     => true,
-    
-        // --- Privacy-Policy aus CPT (WP-Settings → Datenschutz lässt nativ nur
-        //     `page` zu). Macht die Posts dieses CPT im Privacy-Dropdown wählbar. ---
-        'privacy_cpt'          => '',   // z. B. 'compliance'; '' = Modul aus
-    
-        // --- Explizite 301-Redirects (alter Pfad => neuer Pfad, je mit Slash).
-        //     Für root-basierte CPTs greift WPs "alter Slug"-Redirect nicht. ---
-        'redirects'            => array(),   // z. B. array('/alt/' => '/neu/')
+        'last_login_column'    => true,   // user list: "Last login" column (sortable)
+        'disable_file_editor'  => true,   // theme/plugin editor in the admin off (DISALLOW_FILE_EDIT)
+        'generic_login_errors' => true,   // login does not reveal whether the username exists
+        // Comments COMPLETELY off (frontend closed, existing ones hidden, admin menu/
+        // admin bar gone, REST endpoints removed). Opt-in since 4.0 — only enable if
+        // the site really uses no comments.
+        'disable_comments'     => false,
 
-        // --- Konten & Sicherheit (Abschnitt 15, bis 3.5 „Etch Security") ---
-        // User Guard, Sicherheits-Log, erzwungene Core-Sicherheitsupdates. Domains und
-        // Schalter pflegt man unter Werkzeuge → WebAudits Suite → Konten & Sicherheit.
+        // --- Privacy policy from a CPT (WP Settings → Privacy natively only allows
+        //     `page`). Makes this CPT's posts selectable in the privacy dropdown. ---
+        'privacy_cpt'          => '',   // e.g. 'compliance'; '' = module off
+
+        // --- Explicit 301 redirects (old path => new path, each with a slash).
+        //     WP's "old slug" redirect doesn't apply to root-based CPTs. ---
+        'redirects'            => array(),   // e.g. array('/old/' => '/new/')
+
+        // --- Accounts & security (section 15, "Etch Security" up to 3.5) ---
+        // User Guard, security log, forced core security updates. Domains and
+        // switches are managed under Tools → WebAudits Suite → Accounts & security.
         'security_module'      => true,
+
+        // --- Self-update ---
+        'self_update'          => true,                         // false = pin the version (manual button still works)
+        'update_repo'          => 'tobiashaas/webaudits-suite', // GitHub owner/repo; point it to a fork if you maintain one
     );
+    webaudits_load_site_config();
     $site = defined('WEBAUDITS_CONFIG_SITE') ? WEBAUDITS_CONFIG_SITE : array();
     $cfg = array_merge($defaults, (array) $site);
+    // Fallbacks for a first run without (complete) config: the WordPress settings.
+    // Placeholders copied unchanged from the sample count as "not set".
+    if (!$cfg['site_url'] || stripos($cfg['site_url'], 'example.com') !== false) $cfg['site_url'] = untrailingslashit(home_url());
+    if (!$cfg['brand_name'] || strcasecmp($cfg['brand_name'], 'example') === 0) $cfg['brand_name'] = wp_specialchars_decode(get_bloginfo('name'), ENT_QUOTES);
+    if (stripos((string) $cfg['security_contact'], 'example.com') !== false) $cfg['security_contact'] = '';
     return $cfg;
 }
 
-// Diese Schlüssel sind im Admin (Werkzeuge → WebAudits Suite) editierbar.
-// Die DB-Option `webaudits_suite_options` GEWINNT über den Datei-Default;
-// alles andere bleibt bewusst Datei-Konfig (versioniert im Repo).
+/**
+ * Loads webaudits-config.php if no config is defined yet. As a must-use plugin
+ * WordPress loads the file itself (it sits in mu-plugins/ and sorts before the
+ * suite); as a regular plugin the suite looks in wp-content/ and next to itself.
+ */
+function webaudits_load_site_config() {
+    if (defined('WEBAUDITS_CONFIG_SITE')) return;
+    foreach (array(WPMU_PLUGIN_DIR, WP_CONTENT_DIR, __DIR__) as $dir) {
+        $file = $dir . '/webaudits-config.php';
+        if (is_readable($file)) { require_once $file; return; }
+    }
+}
+
+// These keys are editable in the admin (Tools → WebAudits Suite).
+// The DB option `webaudits_suite_options` WINS over the file default;
+// everything else deliberately stays file config (versioned in the repo).
 const WEBAUDITS_UI_KEYS = array(
     'gtm_id'               => 'text',
     'ga4_id'               => 'text',
@@ -208,27 +252,47 @@ function webaudits_cfg($key, $default = null) {
     return WEBAUDITS_UI_KEYS[$key] === 'bool' ? (bool) $opts[$key] : $opts[$key];
 }
 
-// Zweisprachigkeit ohne .po-Apparat: Deutsch, wenn die relevante Locale de_* ist,
-// sonst Englisch. Admin-Seiten folgen der BENUTZER-Sprache, Frontend-Strings
-// (z. B. Login-Fehler) der Site-Locale.
+// Bilingual without the .po machinery: German if the relevant locale is de_*,
+// English otherwise. Admin pages follow the USER language, frontend strings
+// (e.g. login errors) follow the site locale.
 function webaudits_txt($de, $en) {
     $locale = (is_admin() && function_exists('get_user_locale')) ? get_user_locale() : determine_locale();
     return (strpos($locale, 'de') === 0) ? $de : $en;
 }
 
-// Etch-Builder-Ansicht (?etch=magic): CSP + Output-Buffer würden den Builder
-// aussperren (er braucht 'unsafe-eval' via new Function() und die Bridge-
-// WebSocket ws://127.0.0.1:7331/7332). Für diese eingeloggte Editor-Ansicht
-// senden wir daher KEINE CSP und lassen den Buffer aus. Anonyme Besucher sind
-// unberührt.
-function webaudits_is_etch_editor() {
-    return isset($_GET['etch']) && $_GET['etch'] === 'magic';
+// Page-builder editing views: CSP + output buffer would lock the builder out
+// (builders need 'unsafe-eval', e.g. via new Function(), and their own preview
+// channels — Etch additionally its bridge WebSocket ws://127.0.0.1:7331/7332).
+// For logged-in editors in these views we send NO CSP and skip the buffer.
+// Visitors — and anyone adding the query string without being logged in —
+// always get the full policy. Query key => required value ('' = any value).
+function webaudits_is_builder_view() {
+    static $is = null;
+    if ($is !== null) return $is;
+    $views = apply_filters('webaudits_builder_query_vars', array(
+        'etch'              => 'magic',    // Etch
+        'bricks'            => 'run',      // Bricks (builder + preview iframe)
+        'elementor-preview' => '',         // Elementor preview iframe
+        'ct_builder'        => '',         // Oxygen
+        'breakdance'        => 'builder',  // Breakdance
+        'breakdance_iframe' => '',         // Breakdance preview iframe
+        'fl_builder'        => '',         // Beaver Builder
+        'et_fb'             => '',         // Divi visual builder
+        'brizy-edit'        => '',         // Brizy
+        'brizy-edit-iframe' => '',         // Brizy preview iframe
+    ));
+    $hit = false;
+    foreach ((array) $views as $key => $value) {
+        if (isset($_GET[$key]) && ($value === '' || $_GET[$key] === $value)) { $hit = true; break; }
+    }
+    $is = $hit && function_exists('current_user_can') && is_user_logged_in() && current_user_can('edit_posts');
+    return $is;
 }
 
 // ---------------------------------------------------------------- Framing
 /**
- * Fremde Origins, die GENAU DIESE Antwort einbetten duerfen.
- * Leeres Array = niemand (dann bleibt es bei X-Frame-Options: SAMEORIGIN).
+ * Foreign origins allowed to embed EXACTLY THIS response.
+ * Empty array = nobody (X-Frame-Options: SAMEORIGIN then stays).
  */
 function webaudits_frame_ancestor_origins() {
     static $cache = null;
@@ -239,7 +303,7 @@ function webaudits_frame_ancestor_origins() {
     $origins = array();
     foreach ((array) (isset($fa['origins']) ? $fa['origins'] : array()) as $o) {
         $o = trim((string) $o);
-        // Nur echte Origins: Schema + Host, kein Pfad, kein Wildcard.
+        // Real origins only: scheme + host, no path, no wildcard.
         if (!preg_match('~^https?://[A-Za-z0-9.\-]+(:\d+)?$~', $o)) continue;
         $origins[] = $o;
     }
@@ -247,20 +311,20 @@ function webaudits_frame_ancestor_origins() {
     $paths = array_filter(array_map(function ($p) {
         return rtrim((string) $p, '/');
     }, (array) (isset($fa['paths']) ? $fa['paths'] : array())), 'strlen');
-    if (!$paths) { $cache = $origins; return $cache; }   // site-weit
+    if (!$paths) { $cache = $origins; return $cache; }   // site-wide
     $path = rtrim((string) parse_url(isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '/', PHP_URL_PATH), '/');
     if (in_array($path, $paths, true)) $cache = $origins;
     return $cache;
 }
 
-/** Wert der frame-ancestors-Direktive fuer diese Antwort. */
+/** Value of the frame-ancestors directive for this response. */
 function webaudits_frame_ancestors_value() {
     $extra = webaudits_frame_ancestor_origins();
     return $extra ? "'self' " . implode(' ', $extra) : "'self'";
 }
 
-// ==================================================== 1) XML-RPC komplett dicht
-// xmlrpc.php definiert XMLRPC_REQUEST vor wp-load.php -> mu-plugin sieht es früh.
+// ==================================================== 1) XML-RPC fully closed
+// xmlrpc.php defines XMLRPC_REQUEST before wp-load.php -> the mu-plugin sees it early.
 if (webaudits_cfg('block_xmlrpc') && defined('XMLRPC_REQUEST') && XMLRPC_REQUEST) {
     http_response_code(403);
     header('Content-Type: text/plain; charset=utf-8');
@@ -272,30 +336,30 @@ if (webaudits_cfg('block_xmlrpc')) {
     remove_action('wp_head', 'rsd_link');
 }
 
-// ==================================================== 2) Response-Security-Header
+// ==================================================== 2) Response security headers
 add_action('send_headers', function () {
     if (headers_sent()) return;
     header('Strict-Transport-Security: max-age=31536000; includeSubDomains' . (webaudits_cfg('hsts_preload') ? '; preload' : ''));
     header('X-Content-Type-Options: nosniff');
-    // XFO kann keine fremde Origin erlauben — auf Antworten mit erlaubten
-    // Fremd-Ancestors muss er entfallen, sonst blockiert er die Einbettung
-    // trotz frame-ancestors. Der Schutz kommt dort aus dem eigenen,
-    // erzwungenen CSP-Header weiter unten (Prioritaet 1001).
+    // XFO cannot allow a foreign origin — on responses with allowed foreign
+    // ancestors it must be omitted, otherwise it blocks the embedding
+    // despite frame-ancestors. Protection there comes from the separate,
+    // enforced CSP header further down (priority 1001).
     if (!webaudits_frame_ancestor_origins()) header('X-Frame-Options: SAMEORIGIN');
-    // same-origin: intern voller Referrer (WP braucht ihn teils), cross-origin
-    // gar keiner — strenger als strict-origin-when-cross-origin, gefahrlos
-    // solange kein externer Dienst einen Referrer von uns braucht.
+    // same-origin: full referrer internally (WP partly needs it), none
+    // cross-origin — stricter than strict-origin-when-cross-origin, safe
+    // as long as no external service needs a referrer from us.
     header('Referrer-Policy: same-origin');
     header('Permissions-Policy: camera=(), microphone=(), geolocation=(), browsing-topics=()');
-    // COEP bewusst NICHT: require-corp bräche externe Embeds (nur nötig für
-    // Cross-Origin-Isolation/SharedArrayBuffer).
+    // COEP deliberately NOT set: require-corp would break external embeds (only
+    // needed for cross-origin isolation/SharedArrayBuffer).
     header('Cross-Origin-Opener-Policy: same-origin');
     header('Cross-Origin-Resource-Policy: same-origin');
     header('X-Permitted-Cross-Domain-Policies: none');
     @header_remove('X-Powered-By');
 }, 999);
 
-// ==================================================== 3) Versions-Leaks
+// ==================================================== 3) Version leaks
 remove_action('wp_head', 'wp_generator');
 add_filter('the_generator', '__return_empty_string');
 
@@ -323,22 +387,22 @@ add_action('init', function () {
     exit;
 });
 
-// ==================================================== 6) CSP (nonce-basiert, dynamisch)
-/** Nonce pro Request (einmal berechnet, dann konstant). */
+// ==================================================== 6) CSP (nonce-based, dynamic)
+/** Nonce per request (computed once, then constant). */
 function webaudits_csp_nonce() {
     static $n = null;
     if ($n === null) $n = base64_encode(random_bytes(16));
     return $n;
 }
 
-/** Nonce an enqueued <script src="…"> hängen. */
+/** Attach the nonce to enqueued <script src="…">. */
 add_filter('script_loader_tag', function ($tag, $handle) {
     if (webaudits_cfg('csp_mode') === 'off' || is_admin()) return $tag;
     if (strpos($tag, ' nonce=') !== false || strpos($tag, '<script') === false) return $tag;
     return preg_replace('/<script\s/', '<script nonce="' . esc_attr(webaudits_csp_nonce()) . '" ', $tag, 1);
 }, 11, 2);
 
-/** Nonce auf wp_add_inline_script/wp_script-Ausgabe (WP >= 6.3). */
+/** Nonce on wp_add_inline_script/wp_script output (WP >= 6.3). */
 add_filter('wp_inline_script_attributes', function ($attr) {
     if (webaudits_cfg('csp_mode') !== 'off' && !is_admin()) $attr['nonce'] = webaudits_csp_nonce();
     return $attr;
@@ -349,8 +413,8 @@ add_filter('wp_script_attributes', function ($attr) {
 }, 10, 1);
 
 /**
- * Wirksamer CSP-Modus für diesen Request. Eingeloggte Administratoren lassen sich
- * per `csp_admins` lockern (nie verschärfen); Besucher bekommen immer csp_mode.
+ * Effective CSP mode for this request. For logged-in administrators it can be
+ * relaxed via `csp_admins` (never tightened); visitors always get csp_mode.
  */
 function webaudits_csp_effective_mode() {
     $mode = webaudits_cfg('csp_mode');
@@ -361,13 +425,13 @@ function webaudits_csp_effective_mode() {
     return $mode;
 }
 
-/** CSP-Header senden (Name je nach Modus). */
+/** Send the CSP header (name depends on the mode). */
 add_action('send_headers', function () {
     if (webaudits_csp_effective_mode() === 'off' || is_admin() || headers_sent()) return;
-    if (webaudits_is_etch_editor()) return;   // Builder braucht eval + ws-Bridge
+    if (webaudits_is_builder_view()) return;   // builder needs eval + ws bridge
     $n = webaudits_csp_nonce();
     $enforce = webaudits_csp_effective_mode() === 'enforce';
-    // Erlaubte Inline-Handler als Hash (nur exakt diese Texte; alle anderen on*= bleiben verboten).
+    // Allowed inline handlers as hashes (exactly these texts only; all other on*= stay forbidden).
     $hashes = '';
     foreach ((array) webaudits_cfg('csp_handler_hashes', array()) as $src) {
         if (is_string($src) && $src !== '') $hashes .= " 'sha256-" . base64_encode(hash('sha256', $src, true)) . "'";
@@ -378,20 +442,20 @@ add_action('send_headers', function () {
         "object-src 'none'",
         'frame-ancestors ' . webaudits_frame_ancestors_value(),
         "form-action 'self'",
-        // Nonce + strict-dynamic ist die eigentliche Policy (CSP3-Browser
-        // ignorieren dann 'unsafe-inline' und https: — reine Alt-Browser-
-        // Fallbacks, Google-Muster). Jedes script-Tag bekommt die Nonce im
-        // Output-Buffer -> externe Skripte laufen ohne Allowlist-Pflege.
+        // Nonce + strict-dynamic is the actual policy (CSP3 browsers then
+        // ignore 'unsafe-inline' and https: — pure legacy-browser
+        // fallbacks, Google pattern). Every script tag gets the nonce in the
+        // output buffer -> external scripts run without maintaining an allowlist.
         "script-src 'self' 'nonce-$n' 'strict-dynamic'" . ($hashes ? " 'unsafe-hashes'$hashes" : '') . " 'unsafe-inline' https:",
-        "style-src 'self' 'unsafe-inline'",   // Builder-Inline-style=""-Attribute
+        "style-src 'self' 'unsafe-inline'",   // builder inline style="" attributes
         "img-src 'self' data: https:",
         "font-src 'self' data:",
         "connect-src 'self' https:",
         "frame-src 'self' https:",
         "worker-src 'self' blob:",
     );
-    // upgrade-insecure-requests wirkt nur erzwungen; im Report-Only-Header meldet
-    // Chrome dafür auf jeder Seite einen Konsolenfehler.
+    // upgrade-insecure-requests only works when enforced; in the Report-Only header
+    // Chrome logs a console error for it on every page.
     if ($enforce) $directives[] = 'upgrade-insecure-requests';
     $csp = implode('; ', $directives);
     $name = $enforce ? 'Content-Security-Policy' : 'Content-Security-Policy-Report-Only';
@@ -399,30 +463,30 @@ add_action('send_headers', function () {
 }, 1000);
 
 /**
- * frame-ancestors IMMER erzwungen — als eigener Header, unabhaengig vom
- * csp_mode. Gruende: (a) Report-Only erzwingt gar nichts, (b) bei csp_mode=off
- * gaebe es sonst nach dem XFO-Wegfall ueberhaupt keinen Framing-Schutz mehr.
- * Zweiter Header ist gewollt: mehrere CSP-Header werden UND-verknuepft.
- * Laeuft NACH dem grossen CSP-Header (1000), damit dessen replace=true den
- * hier gesetzten Wert nicht ueberschreibt.
+ * frame-ancestors ALWAYS enforced — as a separate header, independent of
+ * csp_mode. Reasons: (a) Report-Only enforces nothing, (b) with csp_mode=off
+ * there would otherwise be no framing protection at all once XFO is dropped.
+ * The second header is intentional: multiple CSP headers are AND-combined.
+ * Runs AFTER the main CSP header (1000) so that its replace=true does not
+ * overwrite the value set here.
  */
 add_action('send_headers', function () {
     if (is_admin() || headers_sent()) return;
-    if (webaudits_is_etch_editor()) return;
-    if (webaudits_csp_effective_mode() === 'enforce') return;   // steckt dort schon drin
+    if (webaudits_is_builder_view()) return;
+    if (webaudits_csp_effective_mode() === 'enforce') return;   // already included there
     header('Content-Security-Policy: frame-ancestors ' . webaudits_frame_ancestors_value(), false);
 }, 1001);
 
-// ==================================================== 7) EIN Output-Buffer:
-// (a) Bild-Loading-Fixes, (b) CSP-Nonce an ALLE script-Tags (inline + src).
+// ==================================================== 7) ONE output buffer:
+// (a) image-loading fixes, (b) CSP nonce on ALL script tags (inline + src).
 add_action('template_redirect', function () {
-    if (is_admin() || webaudits_is_etch_editor()) return;
+    if (is_admin() || webaudits_is_builder_view()) return;
     if (webaudits_cfg('csp_mode') === 'off' && !webaudits_cfg('force_lazy_classes')) return;
     ob_start('webaudits_filter_output');
 }, 1);
 
 function webaudits_filter_output($html) {
-    // (a) fälschlich eager geladene Bilder (WP-LCP-Heuristik) auf lazy zwingen.
+    // (a) force images wrongly loaded eagerly (WP LCP heuristic) to lazy.
     $lazy = webaudits_cfg('force_lazy_classes', array());
     if ($lazy && stripos($html, '<img') !== false) {
         $html = preg_replace_callback('#<img\b[^>]*>#i', function ($m) use ($lazy) {
@@ -439,8 +503,8 @@ function webaudits_filter_output($html) {
             return $tag;
         }, $html);
     }
-    // (b) Nonce an jedes script-Tag (auch src/extern — der "dynamische" Teil
-    // der CSP; Daten-/Template-Typen überspringen).
+    // (b) nonce on every script tag (including src/external — the "dynamic" part
+    // of the CSP; skip data/template types).
     if (webaudits_cfg('csp_mode') !== 'off' && stripos($html, '<script') !== false) {
         $n = webaudits_csp_nonce();
         $html = preg_replace_callback('#<script\b([^>]*)>#i', function ($m) use ($n) {
@@ -449,8 +513,8 @@ function webaudits_filter_output($html) {
             if (preg_match('#type\s*=\s*["\']?(application/(ld\+)?json|text/(template|html))#i', $a)) return $m[0];
             return '<script nonce="' . $n . '"' . $a . '>';
         }, $html);
-        // (c) Vorab-Laden von Skripten (<link rel="preload|modulepreload" as="script">)
-        // wird ebenfalls gegen script-src geprüft und braucht die Nonce (z. B. Borlabs-Config).
+        // (c) script preloading (<link rel="preload|modulepreload" as="script">)
+        // is also checked against script-src and needs the nonce (e.g. the Borlabs config).
         $html = preg_replace_callback('#<link\b([^>]*)>#i', function ($m) use ($n) {
             $a = $m[1];
             if (stripos($a, 'nonce=') !== false) return $m[0];
@@ -462,7 +526,7 @@ function webaudits_filter_output($html) {
     return $html;
 }
 
-// ==================================================== 8) LocalBusiness-Schema (CPT-getrieben)
+// ==================================================== 8) LocalBusiness schema (CPT-driven)
 add_action('wp_head', function () {
     $lb = webaudits_cfg('localbusiness', array());
     if (empty($lb['enabled']) || !is_page($lb['page'])) return;
@@ -506,21 +570,21 @@ add_action('wp_head', function () {
     echo '<script type="application/ld+json">' . wp_json_encode(array('@context' => 'https://schema.org', '@graph' => $nodes), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . '</script>' . "\n";
 }, 20);
 
-// ==================================================== 9) GTM consent-gated + WS-Form-Bridge
+// ==================================================== 9) GTM consent-gated + WS Form bridge
 
-/** Ist Pressidium Cookie Consent aktiv? Relevant für consent_provider=pressidium.
- *  Slug aus echten Site-Daten verifiziert; is_plugin_active ist der zuverlässige Check. */
+/** Is Pressidium Cookie Consent active? Relevant for consent_provider=pressidium.
+ *  Slug verified against real site data; is_plugin_active is the reliable check. */
 function webaudits_pressidium_active() {
     if (!function_exists('is_plugin_active')) require_once ABSPATH . 'wp-admin/includes/plugin.php';
     return is_plugin_active('pressidium-cookie-consent/pressidium-cookie-consent.php');
 }
 
 /**
- * Liefert die Attribute für das consent-gated GTM-<script> je nach consent_provider.
- * Rückgabe: array($attrs, $grant).
- *   $attrs === null  -> nicht emittieren (Provider nicht einsatzbereit, z. B. Pressidium inaktiv)
- *   $attrs === ''    -> plain <script> (provider=none): lädt, bleibt aber cookielos
- *   sonst            -> '<script '.$attrs.'>' (text/plain, vom Consent-Manager aktiviert)
+ * Returns the attributes for the consent-gated GTM <script> depending on consent_provider.
+ * Returns: array($attrs, $grant).
+ *   $attrs === null  -> do not emit (provider not ready, e.g. Pressidium inactive)
+ *   $attrs === ''    -> plain <script> (provider=none): loads, but stays cookieless
+ *   otherwise        -> '<script '.$attrs.'>' (text/plain, activated by the consent manager)
  */
 function webaudits_consent_gate($category) {
     $provider = webaudits_cfg('consent_provider', 'pressidium');
@@ -532,24 +596,52 @@ function webaudits_consent_gate($category) {
     if ($provider === 'none') {
         return array('', false);
     }
-    // pressidium (Default): nur wenn aktiv, sonst inert
+    if ($provider === 'custom') {
+        // Attributes from the config. The script must stay inert until consent,
+        // so a non-JavaScript type is mandatory — otherwise nothing is emitted.
+        $attrs = (array) webaudits_cfg('consent_script_attrs', array());
+        $type = isset($attrs['type']) ? strtolower(trim((string) $attrs['type'])) : '';
+        if ($type === '' || in_array($type, array('text/javascript', 'application/javascript', 'module'), true)) return array(null, false);
+        $out = array();
+        foreach ($attrs as $name => $value) {
+            if (!preg_match('/^[a-z][a-z0-9_:.-]*$/i', (string) $name)) continue;
+            $out[] = $value === true || $value === '' ? $name : $name . '="' . esc_attr((string) $value) . '"';
+        }
+        return array(implode(' ', $out), true);
+    }
+    if ($provider !== 'pressidium') return array(null, false);   // unknown value: never load ungated
+    // pressidium (default): only if active, otherwise inert
     if (!webaudits_pressidium_active()) return array(null, false);
     return array('type="text/plain" data-cookiecategory="' . esc_attr($category) . '"', true);
 }
 
-// Admin-Warnung: Pressidium als Consent-Provider gewählt, aber Plugin nicht aktiv -> GTM-Gating inaktiv.
+// Admin warning: a GTM ID is set, but the chosen consent provider is not ready -> GTM is not loaded.
 add_action('admin_notices', function () {
     if (!current_user_can('manage_options')) return;
     if (!webaudits_cfg('gtm_id')) return;
-    if (webaudits_cfg('consent_provider', 'pressidium') !== 'pressidium') return;
-    if (webaudits_pressidium_active()) return;
-    echo '<div class="notice notice-warning"><p><strong>WebAudits Suite:</strong> ' . esc_html(webaudits_txt(
-        'consent_provider = pressidium, aber das Pressidium-Cookie-Consent-Plugin ist nicht aktiv — das GTM-Consent-Gating ist deshalb inaktiv (GTM wird nicht geladen). consent_provider auf "iubenda" oder "none" setzen, oder Pressidium aktivieren.',
-        'consent_provider = pressidium, but the Pressidium Cookie Consent plugin is not active — GTM consent-gating is therefore inactive (GTM is not loaded). Set consent_provider to "iubenda" or "none", or activate Pressidium.'
-    )) . '</p></div>';
+    list($attrs) = webaudits_consent_gate(webaudits_cfg('consent_category', 'analytics'));
+    if ($attrs !== null) return;
+    $provider = (string) webaudits_cfg('consent_provider', 'pressidium');
+    if ($provider === 'pressidium') {
+        $msg = webaudits_txt(
+            'consent_provider = pressidium, aber das Pressidium-Cookie-Consent-Plugin ist nicht aktiv — GTM wird deshalb nicht geladen. Pressidium aktivieren oder einen anderen consent_provider wählen (iubenda, custom, none). Lädt euer Consent-Manager GTM selbst (z. B. Borlabs Cookie), gtm_id leer lassen.',
+            'consent_provider = pressidium, but the Pressidium Cookie Consent plugin is not active — GTM is therefore not loaded. Activate Pressidium or choose another consent_provider (iubenda, custom, none). If your consent manager loads GTM itself (e.g. Borlabs Cookie), leave gtm_id empty.'
+        );
+    } elseif ($provider === 'custom') {
+        $msg = webaudits_txt(
+            'consent_provider = custom, aber consent_script_attrs enthält keinen inaktiven Typ (z. B. \'type\' => \'text/plain\') — GTM wird deshalb nicht geladen.',
+            'consent_provider = custom, but consent_script_attrs has no inert type (e.g. \'type\' => \'text/plain\') — GTM is therefore not loaded.'
+        );
+    } else {
+        $msg = sprintf(webaudits_txt(
+            'consent_provider = „%s“ ist unbekannt — GTM wird deshalb nicht geladen. Erlaubt: pressidium, iubenda, custom, none.',
+            'consent_provider = "%s" is unknown — GTM is therefore not loaded. Allowed: pressidium, iubenda, custom, none.'
+        ), $provider);
+    }
+    echo '<div class="notice notice-warning"><p><strong>WebAudits Suite:</strong> ' . esc_html($msg) . '</p></div>';
 });
 
-// Consent Mode v2 Defaults — immer, VOR GTM (speichert nichts, DSGVO-ok).
+// Consent Mode v2 defaults — always, BEFORE GTM (stores nothing, GDPR-safe).
 add_action('wp_head', function () {
     if (!webaudits_cfg('gtm_id') && !webaudits_cfg('ga4_id')) return;
     ?>
@@ -558,18 +650,18 @@ gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personali
     <?php
 }, 4);
 
-// GTM-Loader — consent-gated je nach consent_provider:
-//  - pressidium: <script type="text/plain" data-cookiecategory> (Pressidium flippt nach Consent).
-//    Nur wenn Pressidium aktiv, sonst inert (kein toter Script) + Admin-Warnung.
-//  - iubenda:    <script type="text/plain" class="_iub_cs_activate"> (iubenda aktiviert nach Consent).
-//  - none:       plain <script> ohne Consent-Grant -> GTM lädt, bleibt aber cookielos (Consent Mode denied).
-// Kein noscript-iframe (würde vor Consent feuern).
+// GTM loader — consent-gated depending on consent_provider:
+//  - pressidium: <script type="text/plain" data-cookiecategory> (Pressidium flips it after consent).
+//    Only if Pressidium is active, otherwise inert (no dead script) + admin warning.
+//  - iubenda:    <script type="text/plain" class="_iub_cs_activate"> (iubenda activates it after consent).
+//  - none:       plain <script> without a consent grant -> GTM loads but stays cookieless (Consent Mode denied).
+// No noscript iframe (it would fire before consent).
 add_action('wp_head', function () {
     if (!webaudits_cfg('gtm_id')) return;
     $id  = esc_js(webaudits_cfg('gtm_id'));
     $cat = webaudits_cfg('consent_category', 'analytics');
     list($attrs, $grant) = webaudits_consent_gate($cat);
-    if ($attrs === null) return; // Provider gewählt aber nicht einsatzbereit (z. B. Pressidium inaktiv)
+    if ($attrs === null) return; // provider selected but not ready (e.g. Pressidium inactive)
     $loader = "(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','" . $id . "');";
     if ($attrs === '') {
         echo "<script>\n" . $loader . "\n</script>\n";
@@ -578,10 +670,10 @@ add_action('wp_head', function () {
     }
 }, 5);
 
-// ==================================================== 9b) GA4 direkt (gtag) — Alternative zu GTM
-// Läuft NUR ohne GTM-Container (sonst zählt jede Seite doppelt — GTM gewinnt).
-// Consent Mode v2: die Defaults oben (Prio 4) stehen VOR diesem Loader; GA4
-// läuft cookielos, bis der Consent-Manager analytics_storage granted meldet.
+// ==================================================== 9b) GA4 direct (gtag) — alternative to GTM
+// Runs ONLY without a GTM container (otherwise every page counts twice — GTM wins).
+// Consent Mode v2: the defaults above (priority 4) come BEFORE this loader; GA4
+// runs cookieless until the consent manager reports analytics_storage granted.
 add_action('wp_head', function () {
     if (!webaudits_cfg('ga4_id') || webaudits_cfg('gtm_id') || is_admin() || is_user_logged_in()) return;
     $id = webaudits_cfg('ga4_id');
@@ -592,7 +684,7 @@ add_action('wp_head', function () {
 ";
 }, 6);
 
-// Doppel-Tracking-Sperre sichtbar machen: beide IDs gesetzt -> Warnung im Admin.
+// Make the double-tracking lock visible: both IDs set -> warning in the admin.
 add_action('admin_notices', function () {
     if (!current_user_can('manage_options')) return;
     if (webaudits_cfg('gtm_id') && webaudits_cfg('ga4_id')) {
@@ -603,7 +695,7 @@ add_action('admin_notices', function () {
     }
 });
 
-// WS-Form-Bridge: offizielles document-Event `wsf-submit-success` (WS-Form-Doku).
+// WS Form bridge: official document event `wsf-submit-success` (WS Form docs).
 add_action('wp_footer', function () {
     if (!webaudits_cfg('gtm_id') || !webaudits_cfg('wsf_bridge_event')) return;
     $event = esc_js(webaudits_cfg('wsf_bridge_event'));
@@ -612,13 +704,13 @@ add_action('wp_footer', function () {
     <?php
 }, 20);
 
-// ==================================================== 10) Admin/Backend-Aufräumen
-// Datei-Editor aus (Security: kein Code-Editing über kompromittierte Admin-Session).
+// ==================================================== 10) Admin/backend cleanup
+// File editor off (security: no code editing via a compromised admin session).
 if (webaudits_cfg('disable_file_editor') && !defined('DISALLOW_FILE_EDIT')) {
     define('DISALLOW_FILE_EDIT', true);
 }
 
-// Login-Fehler verschleiern (kein Username-Enumeration-Hinweis).
+// Obscure login errors (no username-enumeration hint).
 if (webaudits_cfg('generic_login_errors')) {
     add_filter('login_errors', function () {
         return webaudits_txt(
@@ -628,7 +720,7 @@ if (webaudits_cfg('generic_login_errors')) {
     });
 }
 
-// Dashboard bereinigen: Standard-Widgets, Willkommens-Panel, Plugin-Widgets.
+// Clean up the dashboard: default widgets, welcome panel, plugin widgets.
 add_action('wp_dashboard_setup', function () {
     if (!webaudits_cfg('admin_cleanup')) return;
     $widgets = array(
@@ -653,13 +745,13 @@ add_action('wp_dashboard_setup', function () {
     remove_action('welcome_panel', 'wp_welcome_panel');
 }, 999);
 
-// Visuelle Überreste (leere Container, Community-Events-Footer).
+// Visual leftovers (empty containers, community events footer).
 add_action('admin_head', function () {
     if (!webaudits_cfg('admin_cleanup')) return;
     echo '<style>#dashboard-widgets .empty-container,.dashboard-post-browser,.community-events-footer{display:none !important;}</style>';
 }, 100);
 
-// Benutzer-Liste: sortierbare Spalte "Letzter Login".
+// User list: sortable "Last login" column.
 if (webaudits_cfg('last_login_column')) {
     add_action('wp_login', function ($user_login, $user) {
         update_user_meta($user->ID, 'last_login', time());
@@ -671,7 +763,7 @@ if (webaudits_cfg('last_login_column')) {
     add_filter('manage_users_custom_column', function ($value, $column, $user_id) {
         if ($column !== 'last_login') return $value;
         $ts = (int) get_user_meta($user_id, 'last_login', true);
-        // wp_date = Site-Zeitzone (date() wäre UTC).
+        // wp_date = site timezone (date() would be UTC).
         return $ts ? wp_date('d.m.Y H:i', $ts) : '—';
     }, 10, 3);
     add_filter('manage_users_sortable_columns', function ($columns) {
@@ -680,8 +772,8 @@ if (webaudits_cfg('last_login_column')) {
     });
     add_action('pre_get_users', function ($query) {
         if (!is_admin() || ($_GET['orderby'] ?? '') !== 'last_login') return;
-        // OR-meta_query, damit Benutzer OHNE last_login beim Sortieren nicht
-        // aus der Liste fallen (der klassische meta_key-Ansatz filtert sie weg).
+        // OR meta_query so users WITHOUT last_login don't drop out of the
+        // list when sorting (the classic meta_key approach filters them out).
         $query->set('meta_query', array(
             'relation' => 'OR',
             'last_login_clause' => array('key' => 'last_login', 'compare' => 'EXISTS', 'type' => 'NUMERIC'),
@@ -691,9 +783,9 @@ if (webaudits_cfg('last_login_column')) {
     });
 }
 
-// ==================================================== 11) Kommentare komplett aus
+// ==================================================== 11) Comments completely off
 if (webaudits_cfg('disable_comments')) {
-    // Support von allen Post-Types entfernen + überall schließen.
+    // Remove support from all post types + close everywhere.
     add_action('init', function () {
         foreach (get_post_types() as $pt) {
             if (post_type_supports($pt, 'comments')) {
@@ -704,26 +796,26 @@ if (webaudits_cfg('disable_comments')) {
     }, 100);
     add_filter('comments_open', '__return_false', 20);
     add_filter('pings_open', '__return_false', 20);
-    // Bestehende Kommentare nirgends mehr ausgeben.
+    // Never output existing comments anywhere.
     add_filter('comments_array', '__return_empty_array', 20);
-    // Kommentar-Feed-Links aus dem <head> (feed_links + feed_links_extra).
+    // Comment feed links out of the <head> (feed_links + feed_links_extra).
     add_filter('feed_links_show_comments_feed', '__return_false');
     add_filter('feed_links_extra_show_post_comments_feed', '__return_false');
-    // Admin: Menüpunkt weg, Kommentar-Seite umleiten, Adminbar-Blase weg.
+    // Admin: menu item gone, comments page redirected, admin bar bubble gone.
     add_action('admin_menu', function () { remove_menu_page('edit-comments.php'); });
     add_action('admin_init', function () {
         global $pagenow;
         if ($pagenow === 'edit-comments.php') { wp_safe_redirect(admin_url()); exit; }
     });
     add_action('admin_bar_menu', function ($bar) { $bar->remove_node('comments'); }, 999);
-    // REST-Endpunkte entfernen (sonst bleiben Kommentare per API lesbar).
+    // Remove REST endpoints (otherwise comments stay readable via the API).
     add_filter('rest_endpoints', function ($endpoints) {
         unset($endpoints['/wp/v2/comments'], $endpoints['/wp/v2/comments/(?P<id>[\d]+)']);
         return $endpoints;
     });
 }
 
-// ==================================================== 11b) Explizite 301-Redirects
+// ==================================================== 11b) Explicit 301 redirects
 add_action('template_redirect', function () {
     $map = webaudits_cfg('redirects', array());
     if (!$map) return;
@@ -736,11 +828,11 @@ add_action('template_redirect', function () {
     }
 }, 0);
 
-// ==================================================== 12) Privacy-Policy aus CPT
-// WP Settings → Datenschutz baut den Seiten-Dropdown mit wp_dropdown_pages()
-// und listet nur `page`. Wir hängen die CPT-Posts als <option> an — beim
-// Speichern legt WP `wp_page_for_privacy_policy` = gewählte ID ab (ohne
-// post_type-Prüfung), get_privacy_policy_url() funktioniert für jeden Posttyp.
+// ==================================================== 12) Privacy policy from a CPT
+// WP Settings → Privacy builds the page dropdown with wp_dropdown_pages()
+// and lists only `page`. We append the CPT posts as <option>s — on save
+// WP stores `wp_page_for_privacy_policy` = selected ID (without a
+// post_type check), and get_privacy_policy_url() works for any post type.
 add_filter('wp_dropdown_pages', function ($html, $args) {
     $cpt = webaudits_cfg('privacy_cpt');
     if (!$cpt || !is_admin()) return $html;
@@ -756,34 +848,45 @@ add_filter('wp_dropdown_pages', function ($html, $args) {
     return preg_replace('#</select>#', $opts . '</select>', $html, 1);
 }, 10, 2);
 
-// ==================================================== 14) Self-Update (GitHub-Releases)
-// Kanonisches Repo (öffentlich, kein Token nötig). Ein Release = ein Tag vX.Y.Z;
-// der Cron vergleicht 2x täglich und ersetzt NUR webaudits-suite.php — die
-// Site-Konfig (webaudits-config.php) und die DB-Option bleiben unberührt.
-const WEBAUDITS_SUITE_VERSION = '3.6.1';
+// ==================================================== 14) Self-update (GitHub releases)
+// Canonical repo (public, no token needed). One release = one tag vX.Y.Z;
+// the cron compares twice daily and replaces ONLY webaudits-suite.php — the
+// site config (webaudits-config.php) and the DB option stay untouched.
+const WEBAUDITS_SUITE_VERSION = '4.0.0';
 const WEBAUDITS_SUITE_REPO = 'tobiashaas/webaudits-suite';
 
+/** Update source: 'update_repo' from the config (owner/repo), otherwise the canonical repo. */
+function webaudits_update_repo() {
+    $repo = trim((string) webaudits_cfg('update_repo', WEBAUDITS_SUITE_REPO), " /");
+    return preg_match('#^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$#', $repo) ? $repo : WEBAUDITS_SUITE_REPO;
+}
+
 add_action('init', function () {
-    if (!wp_next_scheduled('webaudits_update_check')) {
-        wp_schedule_event(time() + HOUR_IN_SECONDS, 'twicedaily', 'webaudits_update_check');
+    $scheduled = wp_next_scheduled('webaudits_update_check');
+    if (!webaudits_cfg('self_update', true)) {
+        if ($scheduled) wp_clear_scheduled_hook('webaudits_update_check');   // pinned: no automatic checks
+        return;
     }
+    if (!$scheduled) wp_schedule_event(time() + HOUR_IN_SECONDS, 'twicedaily', 'webaudits_update_check');
 });
-add_action('webaudits_update_check', 'webaudits_run_update_check');
+add_action('webaudits_update_check', function () {
+    if (webaudits_cfg('self_update', true)) webaudits_run_update_check();
+});
 
 function webaudits_run_update_check() {
     $status = array('checked_at' => time(), 'current' => WEBAUDITS_SUITE_VERSION, 'error' => '');
-    // Version UND Code in EINEM Request von raw.githubusercontent.com.
+    // Version AND code in ONE request from raw.githubusercontent.com.
     //
-    // Warum nicht api.github.com/releases/latest: die API ist pro IP auf 60
-    // Requests/Stunde limitiert. Auf Shared Hosting teilen sich alle Kunden
-    // eine Ausgangs-IP, dort ist das Kontingent praktisch immer aufgebraucht —
-    // am 2026-07-22 auf Strato (81.169.144.135) gemessen: HTTP 403,
-    // "remaining: 0". Der Updater lief dadurch NIE. raw.githubusercontent.com
-    // liegt auf einem CDN ohne dieses Limit (gleiche Messung: HTTP 200).
+    // Why not api.github.com/releases/latest: the API is limited to 60
+    // requests/hour per IP. On shared hosting all customers share one
+    // egress IP, so the quota is practically always used up there —
+    // measured on Strato (81.169.144.135) on 2026-07-22: HTTP 403,
+    // "remaining: 0". The updater therefore NEVER ran. raw.githubusercontent.com
+    // sits on a CDN without this limit (same measurement: HTTP 200).
     //
-    // VERTRAG: der main-Branch ist immer die aktuellste Release-Fassung —
-    // die Version wird erst beim Release angehoben, nicht waehrend der Arbeit.
-    $raw = wp_remote_get('https://raw.githubusercontent.com/' . WEBAUDITS_SUITE_REPO . '/main/webaudits-suite.php', array(
+    // CONTRACT: the main branch is always the latest release version —
+    // the version is bumped only at release time, not during work.
+    $raw = wp_remote_get('https://raw.githubusercontent.com/' . webaudits_update_repo() . '/main/webaudits-suite.php', array(
         'timeout' => 30,
         'headers' => array('User-Agent' => 'webaudits-suite-updater'),
     ));
@@ -799,8 +902,8 @@ function webaudits_run_update_check() {
         update_option('webaudits_suite_update_status', $status, false);
         return $status;
     }
-    // HART validieren, bevor irgendetwas ersetzt wird — eine kaputte
-    // mu-plugin-Datei legt die ganze Site lahm.
+    // Validate HARD before replacing anything — a broken
+    // mu-plugin file takes down the whole site.
     $valid = $code !== ''
         && strpos($code, '<?php') === 0
         && strlen($code) > 20000
@@ -814,35 +917,40 @@ function webaudits_run_update_check() {
         update_option('webaudits_suite_update_status', $status, false);
         return $status;
     }
-    $file = WPMU_PLUGIN_DIR . '/webaudits-suite.php';
+    // Replace the file that is actually running — mu-plugins/ or plugins/webaudits-suite/.
+    // (Until 3.6 this was hard-wired to mu-plugins/, which would have dropped a second
+    // copy there on regular-plugin installs.)
+    $file = __FILE__;
     if (@file_put_contents($file . '.new', $code) === false || !@copy($file, $file . '.bak') || !@rename($file . '.new', $file)) {
         $status['error'] = 'write_failed';
         update_option('webaudits_suite_update_status', $status, false);
         return $status;
     }
+    if (function_exists('opcache_invalidate')) @opcache_invalidate($file, true);
     $status['updated_to'] = $latest;
     $status['updated_at'] = time();
     update_option('webaudits_suite_update_status', $status, false);
     return $status;
 }
 
-// ==================================================== 13) Admin-Übersicht (Werkzeuge)
+// ==================================================== 13) Admin overview (Tools)
 add_action('admin_menu', function () {
     add_management_page('WebAudits Suite', 'WebAudits Suite', 'manage_options', 'webaudits-suite', 'webaudits_admin_page');
 });
 
 function webaudits_admin_page() {
     $T = 'webaudits_txt';
-    // Reiter des Sicherheits-Moduls (Abschnitt 15): eigene Ansichten, eigenes Speichern über admin-post.
+    // Tabs of the security module (section 15): own views, own saving via admin-post.
     $tab = isset($_GET['tab']) ? sanitize_key($_GET['tab']) : 'suite';
-    if (in_array($tab, array('konten', 'log'), true) && WebAudits_Sec::$active) {
+    if ($tab === 'konten') $tab = 'accounts';   // slug up to 3.6
+    if (in_array($tab, array('accounts', 'log'), true) && WebAudits_Sec::$active) {
         echo '<div class="wrap"><h1>WebAudits Suite</h1>';
         webaudits_admin_tabs($tab);
         if ($tab === 'log') WebAudits_Sec_Admin::render_log(); else WebAudits_Sec_Admin::render_status();
         echo '</div>';
         return;
     }
-    // Speichern (Settings-UI): nur die UI-Schlüssel, Checkboxen explizit 0/1.
+    // Save (settings UI): only the UI keys, checkboxes explicitly 0/1.
     if (isset($_POST['webaudits_save']) && current_user_can('manage_options') && check_admin_referer('webaudits_suite_save')) {
         $in = array();
         foreach (WEBAUDITS_UI_KEYS as $key => $type) {
@@ -871,7 +979,7 @@ function webaudits_admin_page() {
                 ? $T('Update-Prüfung fehlgeschlagen: ', 'Update check failed: ') . $st['error']
                 : $T('Aktuell — neueste Version ist ', 'Up to date — latest version is ') . (isset($st['latest']) ? $st['latest'] : WEBAUDITS_SUITE_VERSION))) . '</p></div>';
     }
-    // Übersicht zeigt den WIRKSAMEN Wert (Datei-Default + UI-Override gemerged).
+    // The overview shows the EFFECTIVE value (file default + UI override merged).
     $c = webaudits_file_config();
     foreach (WEBAUDITS_UI_KEYS as $key => $type) { $c[$key] = webaudits_cfg($key); }
     $lb = $c['localbusiness'];
@@ -895,8 +1003,9 @@ function webaudits_admin_page() {
         if (!empty($upd['error'])) $upd_txt .= ' · <span style="color:#d63638">' . esc_html($upd['error']) . '</span>';
     }
     $rows = array(
-        array($T('Version / Self-Update', 'Version / self-update'), $on,
-            $upd_txt . ' — ' . $T('2×/Tag automatisch aus', 'auto twice a day from') . ' <a href="https://github.com/' . esc_attr(WEBAUDITS_SUITE_REPO) . '/releases" target="_blank">github.com/' . esc_html(WEBAUDITS_SUITE_REPO) . '</a>'),
+        array($T('Version / Self-Update', 'Version / self-update'), webaudits_cfg('self_update', true) ? $on : $off,
+            $upd_txt . ' — ' . (webaudits_cfg('self_update', true) ? $T('2×/Tag automatisch aus', 'auto twice a day from') : $T('automatisch aus (self_update = false), manuell aus', 'automatic updates off (self_update = false), manual check from'))
+            . ' <a href="https://github.com/' . esc_attr(webaudits_update_repo()) . '" target="_blank">github.com/' . esc_html(webaudits_update_repo()) . '</a>'),
         array($T('Security-Header', 'Security headers'), $on,
             'HSTS' . ($c['hsts_preload'] ? ' <strong>+ preload</strong>' : '') . ', nosniff, X-Frame-Options, Referrer-Policy <code>same-origin</code>, Permissions-Policy, COOP/CORP, X-Permitted-Cross-Domain-Policies; '
             . $T('X-Powered-By entfernt. <em>COEP bewusst nicht (bräche externe Embeds).</em>', 'X-Powered-By stripped. <em>Deliberately no COEP (would break external embeds).</em>')),
@@ -933,7 +1042,9 @@ function webaudits_admin_page() {
             ? '<code>' . esc_html($c['gtm_id']) . '</code> — ' . $T('consent-gated via', 'consent-gated via') . ' <code>' . esc_html(webaudits_cfg('consent_provider', 'pressidium')) . '</code>'
               . ('pressidium' === webaudits_cfg('consent_provider', 'pressidium')
                     ? ' (' . $T('Kategorie', 'category') . ' <code>' . esc_html($c['consent_category']) . '</code>, ' . $T('benötigt Pressidium <code>page_scripts</code> = an', 'requires Pressidium <code>page_scripts</code> = on') . ')'
-                    : ('iubenda' === webaudits_cfg('consent_provider', 'pressidium') ? ' (<code>_iub_cs_activate</code>)' : ' (' . $T('kein Gating — cookielos', 'no gating — cookieless') . ')'))
+                    : ('iubenda' === webaudits_cfg('consent_provider', 'pressidium') ? ' (<code>_iub_cs_activate</code>)'
+                    : ('custom' === webaudits_cfg('consent_provider', 'pressidium') ? ' (<code>' . esc_html((string) webaudits_consent_gate('')[0]) . '</code>)'
+                    : ' (' . $T('kein Gating — cookielos', 'no gating — cookieless') . ')')))
               . ' ' . $T('(Consent Mode v2, VOR Einwilligung kein Google-Request)', '(Consent Mode v2, no Google request before consent)') : $na),
         array($T('GA4 direkt (gtag)', 'GA4 direct (gtag)'), (!empty($c['ga4_id']) && empty($c['gtm_id'])) ? $on : $off, !empty($c['ga4_id'])
             ? (empty($c['gtm_id'])
@@ -962,10 +1073,10 @@ function webaudits_admin_page() {
             WebAudits_Sec::$active
                 ? $T('Sicherheits-Log', 'Security log') . ' · User Guard ' . (WebAudits_Sec_Config::enforcing() ? $T('erzwingt', 'enforcing') . ' <code>' . esc_html(implode(', ', WebAudits_Sec_Config::allowed_domains())) . '</code>' : $T('nur protokollierend', 'logging only'))
                   . ' · ' . $T('Core-Sicherheitsupdates', 'core security updates') . ' ' . (WebAudits_Sec_Config::force_core_updates() ? $T('erzwungen', 'enforced') : $T('Site-Policy', 'site policy'))
-                  . ' — <a href="' . esc_url(WebAudits_Sec_Admin::url('konten')) . '">' . $T('Einstellungen', 'settings') . '</a>'
+                  . ' — <a href="' . esc_url(WebAudits_Sec_Admin::url('accounts')) . '">' . $T('Einstellungen', 'settings') . '</a>'
                 : (WebAudits_Sec::$legacy ? $T('Alte Datei etch-security.php ist noch aktiv — entfernen, dann übernimmt die Suite.', 'Old file etch-security.php is still active — remove it and the suite takes over.') : $na)),
     );
-    // Unkonfigurierte Module (Status aus, keine Details) nicht listen.
+    // Don't list unconfigured modules (status off, no details).
     $rows = array_values(array_filter($rows, function ($r) { return $r[2] !== '—'; }));
     ?>
     <div class="wrap">
@@ -987,8 +1098,8 @@ function webaudits_admin_page() {
                     <th scope="row"><label for="wa_gtm_id"><?php echo esc_html($T('GTM-Container-ID', 'GTM container ID')); ?></label></th>
                     <td><input type="text" class="regular-text" id="wa_gtm_id" name="gtm_id" value="<?php echo esc_attr(webaudits_cfg('gtm_id')); ?>" placeholder="GTM-XXXXXXX">
                     <p class="description"><?php echo wp_kses_post($T(
-                        'Consent-gated über Pressidium; braucht Pressidium-Option <code>page_scripts</code> = an. Leer = aus.',
-                        'Consent-gated via Pressidium; requires Pressidium option <code>page_scripts</code> = on. Empty = off.'
+                        'Wird erst nach Einwilligung geladen, über den Consent-Manager aus <code>consent_provider</code> (Konfigurationsdatei). Lädt euer Consent-Manager GTM selbst (z. B. Borlabs Cookie), hier leer lassen. Leer = aus.',
+                        'Loaded only after consent, via the consent manager set in <code>consent_provider</code> (config file). If your consent manager loads GTM itself (e.g. Borlabs Cookie), leave this empty. Empty = off.'
                     )); ?></p></td>
                 </tr>
                 <tr>
@@ -1053,30 +1164,30 @@ function webaudits_admin_page() {
     <?php
 }
 
-// ==================================================== 15) Konten & Sicherheit (bis 3.5 eigenes Plugin „Etch Security")
-// User Guard (Domain-Allowlist für neue Konten + Backstop gegen wp_insert_user und
-// Rechte-Eskalation), Sicherheits-Log (eigene Tabelle: Actor, IP, Request; 180 Tage,
-// CSV) und erzwungene Core-Sicherheitsupdates. Übernommen aus Etch Security 1.1.1
-// (github.com/tobiashaas/Etch-Security, archiviert). Optionen (etch_security_*), die
-// Tabelle {prefix}etch_security_audit, Meta, Filter und die Konstante
-// ETCH_SECURITY_ALLOWED_DOMAINS gelten unverändert weiter: Bestandsdaten bleiben.
-// Liegt die alte etch-security.php noch im mu-plugins-Ordner (oder ist sie als Plugin
-// aktiv), bleibt dieses Modul aus, damit nichts doppelt läuft; die Suite zeigt dann
-// einen Hinweis. Ganz abschalten: 'security_module' => false in webaudits-config.php.
+// ==================================================== 15) Accounts & security (a separate plugin "Etch Security" up to 3.5)
+// User Guard (domain allowlist for new accounts + backstop against wp_insert_user and
+// privilege escalation), security log (own table: actor, IP, request; 180 days,
+// CSV) and forced core security updates. Taken over from Etch Security 1.1.1
+// (github.com/tobiashaas/Etch-Security, archived). Options (etch_security_*), the
+// table {prefix}etch_security_audit, meta, filters and the constant
+// ETCH_SECURITY_ALLOWED_DOMAINS keep working unchanged: existing data is kept.
+// If the old etch-security.php is still in the mu-plugins folder (or active as a
+// plugin), this module stays off so nothing runs twice; the suite then shows
+// a notice. Switch off entirely: 'security_module' => false in webaudits-config.php.
 
 final class WebAudits_Sec
 {
-    public static $active = false;   // Modul läuft
-    public static $legacy = false;   // alte Etch-Security-Datei ist noch geladen
+    public static $active = false;   // module is running
+    public static $legacy = false;   // old Etch Security file is still loaded
 }
 
 final class WebAudits_Sec_Config
 {
-    const OPT_DOMAINS      = 'etch_security_allowed_domains';     // array von Domains
+    const OPT_DOMAINS      = 'etch_security_allowed_domains';     // array of domains
     const OPT_ENFORCE      = 'etch_security_enforce';             // '1' | '0'
-    const OPT_CORE_UPDATES = 'etch_security_force_core_updates';  // '1' | '0' (Default an)
+    const OPT_CORE_UPDATES = 'etch_security_force_core_updates';  // '1' | '0' (default on)
 
-    /** Konfigurierte Domains (Option, sonst die Konstante als Erst-Default). */
+    /** Configured domains (option, otherwise the constant as the initial default). */
     public static function configured_domains()
     {
         $opt = get_option(self::OPT_DOMAINS, null);
@@ -1084,7 +1195,7 @@ final class WebAudits_Sec_Config
         return is_array($opt) ? $opt : array();
     }
 
-    /** Effektive Allowlist: konfigurierte Domains + Domain der Admin-Adresse (gegen Selbst-Aussperren) + Filter. */
+    /** Effective allowlist: configured domains + domain of the admin address (against self-lockout) + filter. */
     public static function allowed_domains()
     {
         $domains = self::configured_domains();
@@ -1095,7 +1206,7 @@ final class WebAudits_Sec_Config
         return array_values(array_unique(array_filter(array_map('strtolower', (array) $domains))));
     }
 
-    /** Enforcement nur, wenn eingeschaltet UND mindestens eine Domain konfiguriert. */
+    /** Enforcement only when switched on AND at least one domain is configured. */
     public static function enforcing()
     {
         if (get_option(self::OPT_ENFORCE, '0') !== '1') return false;
@@ -1131,11 +1242,11 @@ final class WebAudits_Sec_Guard
 
     public static function boot()
     {
-        // Schicht 1 — Prävention auf den regulären Wegen.
+        // Layer 1 — prevention on the regular paths.
         add_filter('rest_pre_insert_user',       array(__CLASS__, 'guard_rest'), 10, 2);
         add_action('user_profile_update_errors', array(__CLASS__, 'guard_profile'), 10, 3);
         add_filter('registration_errors',        array(__CLASS__, 'guard_registration'), 10, 3);
-        // Schicht 2 — Backstop, fängt auch wp_insert_user() und Eskalation.
+        // Layer 2 — backstop, also catches wp_insert_user() and escalation.
         add_action('user_register', array(__CLASS__, 'backstop'), PHP_INT_MAX, 1);
         add_action('set_user_role', array(__CLASS__, 'watch_role'), PHP_INT_MAX, 3);
     }
@@ -1152,7 +1263,7 @@ final class WebAudits_Sec_Guard
         if (!WebAudits_Sec_Config::enforcing()) return $prepared_user;
         $email = isset($prepared_user->user_email) ? $prepared_user->user_email : '';
         if ($email !== '' && !WebAudits_Sec_Config::is_allowed($email)) {
-            WebAudits_Sec_Audit::log('guard_blocked', array('login' => $email), array('weg' => 'rest', 'email' => $email));
+            WebAudits_Sec_Audit::log('guard_blocked', array('login' => $email), array('via' => 'rest', 'email' => $email));
             return new WP_Error('etch_security_user_guard', self::refusal(), array('status' => 403));
         }
         return $prepared_user;
@@ -1165,12 +1276,12 @@ final class WebAudits_Sec_Guard
         if ($email === '') return;
         if ($update && !empty($user->ID)) {
             $current = get_userdata($user->ID);
-            if ($current && strtolower($current->user_email) === strtolower($email)) return; // unverändert
+            if ($current && strtolower($current->user_email) === strtolower($email)) return; // unchanged
         }
         if (!WebAudits_Sec_Config::is_allowed($email)) {
             $errors->add('etch_security_user_guard', self::refusal());
             WebAudits_Sec_Audit::log('guard_blocked', array('id' => isset($user->ID) ? (int) $user->ID : 0, 'login' => $email),
-                array('weg' => 'profile', 'email' => $email));
+                array('via' => 'profile', 'email' => $email));
         }
     }
 
@@ -1179,7 +1290,7 @@ final class WebAudits_Sec_Guard
         if (!WebAudits_Sec_Config::enforcing()) return $errors;
         if ($email !== '' && !WebAudits_Sec_Config::is_allowed($email)) {
             $errors->add('etch_security_user_guard', self::refusal());
-            WebAudits_Sec_Audit::log('guard_blocked', array('login' => $email), array('weg' => 'registration', 'email' => $email));
+            WebAudits_Sec_Audit::log('guard_blocked', array('login' => $email), array('via' => 'registration', 'email' => $email));
         }
         return $errors;
     }
@@ -1199,7 +1310,7 @@ final class WebAudits_Sec_Guard
         if ($user && !WebAudits_Sec_Config::is_allowed($user->user_email)) self::neutralize($user, 'set_user_role:' . $role);
     }
 
-    /** Konto unbrauchbar machen, ohne es zu löschen (Beweismittel). */
+    /** Make the account unusable without deleting it (evidence). */
     private static function neutralize($user, $trigger)
     {
         self::$busy = true;
@@ -1220,15 +1331,22 @@ final class WebAudits_Sec_Guard
         $to = get_option('admin_email');
         if (!$to) return;
         $brand = get_bloginfo('name') ?: 'WebAudits Suite';
-        $body = sprintf(
-            "Es wurde ein Konto mit nicht zugelassener Domain angelegt und sofort entschärft.\n\n"
-            . "Benutzer:  %s\nE-Mail:    %s\nID:        %d\nAusgelöst durch: %s\nZeit:      %s\nIP:        %s\n\n"
-            . "Status: Rolle entzogen, Passwort invalidiert, Sessions beendet.\n"
-            . "Das Konto wurde NICHT gelöscht — es ist Beweismittel.\n"
-            . "Details: Werkzeuge → WebAudits Suite → Sicherheits-Log.",
+        // The recipient is the site's admin address, so the mail follows the site language.
+        $de = strpos((string) get_locale(), 'de') === 0;
+        $body = sprintf($de
+            ? "Es wurde ein Konto mit nicht zugelassener Domain angelegt und sofort entschärft.\n\n"
+              . "Benutzer:  %s\nE-Mail:    %s\nID:        %d\nAusgelöst durch: %s\nZeit:      %s\nIP:        %s\n\n"
+              . "Status: Rolle entzogen, Passwort invalidiert, Sessions beendet.\n"
+              . "Das Konto wurde NICHT gelöscht — es ist Beweismittel.\n"
+              . "Details: Werkzeuge → WebAudits Suite → Sicherheits-Log."
+            : "An account with a non-allowed e-mail domain was created and neutralised immediately.\n\n"
+              . "User:      %s\nE-mail:    %s\nID:        %d\nTriggered by: %s\nTime:      %s\nIP:        %s\n\n"
+              . "Status: role removed, password invalidated, sessions destroyed.\n"
+              . "The account was NOT deleted — it is evidence.\n"
+              . "Details: Tools → WebAudits Suite → Security log.",
             $user->user_login, $user->user_email, $user->ID, $trigger, current_time('mysql'), WebAudits_Sec_Util::ip()
         );
-        wp_mail($to, '[' . $brand . '] Fremder Benutzer blockiert: ' . $user->user_login, $body);
+        wp_mail($to, '[' . $brand . '] ' . ($de ? 'Fremder Benutzer blockiert: ' : 'Foreign user blocked: ') . $user->user_login, $body);
     }
 }
 
@@ -1290,7 +1408,7 @@ final class WebAudits_Sec_Audit
         update_option(self::DB_OPTION, self::DB_VERSION, false);
     }
 
-    /** Zentrale Schreibfunktion. $target = [id, login]; $detail = Array. */
+    /** Central write function. $target = [id, login]; $detail = array. */
     public static function log($event, $target = array(), $detail = array())
     {
         global $wpdb;
@@ -1322,13 +1440,13 @@ final class WebAudits_Sec_Audit
         $u = get_userdata($user_id);
         if (!$u || !$old || strtolower($old->user_email) === strtolower($u->user_email)) return;
         self::log('profile_update', array('id' => $user_id, 'login' => $u->user_login),
-            array('email' => array('von' => $old->user_email, 'nach' => $u->user_email)));
+            array('email' => array('from' => $old->user_email, 'to' => $u->user_email)));
     }
     public static function on_set_role($user_id, $role, $old_roles)
     {
         $u = get_userdata($user_id);
         self::log('set_user_role', array('id' => $user_id, 'login' => $u ? $u->user_login : ''),
-            array('neu' => $role ?: '(keine)', 'vorher' => $old_roles ?: array()));
+            array('new' => $role ?: '(none)', 'previous' => $old_roles ?: array()));
     }
     public static function on_deleted_user($id, $reassign, $user)
     {
@@ -1363,7 +1481,7 @@ final class WebAudits_Sec_Util
 {
     public static function server($key) { return isset($_SERVER[$key]) ? sanitize_text_field(wp_unslash($_SERVER[$key])) : ''; }
 
-    /** Quell-IP. Bewusst REMOTE_ADDR: Proxy-Header sind fälschbar. Hinter vertrauenswürdigem Proxy per Filter ergänzen. */
+    /** Source IP. Deliberately REMOTE_ADDR: proxy headers can be spoofed. Behind a trusted proxy, extend via filter. */
     public static function ip() { return (string) apply_filters('etch_security_client_ip', substr(self::server('REMOTE_ADDR'), 0, 64)); }
 
     public static function context()
@@ -1382,13 +1500,13 @@ final class WebAudits_Sec_Core
     public static function boot()
     {
         if (!WebAudits_Sec_Config::force_core_updates()) return;
-        // Überstimmt Blocker wie Installatron (die per __return_false abschalten): PHP_INT_MAX läuft zuletzt.
+        // Overrides blockers like Installatron (which disable via __return_false): PHP_INT_MAX runs last.
         add_filter('allow_minor_auto_core_updates', '__return_true', PHP_INT_MAX);
         add_filter('auto_update_core', array(__CLASS__, 'allow_security'), PHP_INT_MAX, 2);
         add_action('automatic_updates_complete', array(__CLASS__, 'log_result'), 10, 1);
     }
 
-    /** Nur Minor-/Security-Point-Releases derselben X.Y-Reihe erzwingen; Major bleibt bei der Site-Policy. */
+    /** Force only minor/security point releases of the same X.Y series; major releases follow the site policy. */
     public static function allow_security($update, $item)
     {
         if (!is_object($item) || empty($item->current)) return $update;
@@ -1409,7 +1527,7 @@ final class WebAudits_Sec_Core
         foreach ($results['core'] as $r) {
             $ver = (isset($r->item) && isset($r->item->current)) ? $r->item->current : '?';
             $ok  = !empty($r->result) && !is_wp_error($r->result);
-            WebAudits_Sec_Audit::log('core_auto_update', array('login' => 'WordPress'), array('version' => $ver, 'erfolg' => $ok ? 'ja' : 'nein'));
+            WebAudits_Sec_Audit::log('core_auto_update', array('login' => 'WordPress'), array('version' => $ver, 'success' => $ok ? 'yes' : 'no'));
         }
     }
 }
@@ -1509,26 +1627,26 @@ final class WebAudits_Sec_Admin
 
     public static function save_settings()
     {
-        if (!current_user_can('manage_options')) wp_die('Keine Berechtigung.');
+        if (!current_user_can('manage_options')) wp_die(esc_html(webaudits_txt('Keine Berechtigung.', 'Not allowed.')));
         check_admin_referer('webaudits_sec_save');
         $domains = WebAudits_Sec_Config::parse(isset($_POST['domains']) ? wp_unslash($_POST['domains']) : '');
         update_option(WebAudits_Sec_Config::OPT_DOMAINS, $domains, false);
         update_option(WebAudits_Sec_Config::OPT_ENFORCE, empty($_POST['enforce']) ? '0' : '1', false);
         update_option(WebAudits_Sec_Config::OPT_CORE_UPDATES, empty($_POST['force_core']) ? '0' : '1', false);
         $msg = $domains ? webaudits_txt('Gespeichert.', 'Saved.') : webaudits_txt('Gespeichert (keine Domain → Enforcement bleibt aus).', 'Saved (no domain → enforcement stays off).');
-        wp_safe_redirect(self::url('konten', array('msg' => rawurlencode($msg))));
+        wp_safe_redirect(self::url('accounts', array('msg' => rawurlencode($msg))));
         exit;
     }
 
     public static function export_csv()
     {
-        if (!current_user_can('manage_options')) wp_die('Keine Berechtigung.');
+        if (!current_user_can('manage_options')) wp_die(esc_html(webaudits_txt('Keine Berechtigung.', 'Not allowed.')));
         check_admin_referer('webaudits_sec_csv');
         global $wpdb;
         $rows = $wpdb->get_results('SELECT * FROM ' . WebAudits_Sec_Audit::table() . ' ORDER BY id DESC', ARRAY_A);
         nocache_headers();
         header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename=sicherheits-log-' . gmdate('Ymd-His') . '.csv');
+        header('Content-Disposition: attachment; filename=security-log-' . gmdate('Ymd-His') . '.csv');
         $out = fopen('php://output', 'w');
         fputcsv($out, array('id', 'event_time', 'event_time_gmt', 'event', 'actor_id', 'actor_login', 'target_id', 'target_login', 'detail', 'ip', 'ua', 'uri', 'context'));
         foreach ($rows as $r) fputcsv($out, $r);
@@ -1537,28 +1655,28 @@ final class WebAudits_Sec_Admin
     }
 }
 
-// Start erst bei plugins_loaded: dann ist sicher bekannt, ob die alte Etch-Security-
-// Datei (mu-plugin ODER reguläres Plugin) geladen wurde.
+// Start only on plugins_loaded: by then it is known for sure whether the old Etch Security
+// file (mu-plugin OR regular plugin) was loaded.
 add_action('plugins_loaded', function () {
     if (!webaudits_cfg('security_module', true)) return;
-    // Alte Datei noch geladen? (1.1.x definiert die Konstante, ältere Stände nur ihre Klassen.)
+    // Old file still loaded? (1.1.x defines the constant, older versions only their classes.)
     $legacy = defined('ETCH_SECURITY_VERSION');
     if (!$legacy) foreach (get_declared_classes() as $cls) { if (stripos(str_replace('_', '', $cls), 'EtchSecurity') === 0) { $legacy = true; break; } }
     if ($legacy) { WebAudits_Sec::$legacy = true; return; }
     WebAudits_Sec::$active = true;
-    WebAudits_Sec_Audit::boot();   // zuerst — Guard und Core-Updates loggen hierüber
+    WebAudits_Sec_Audit::boot();   // first — Guard and core updates log through this
     WebAudits_Sec_Guard::boot();
     WebAudits_Sec_Core::boot();
     if (is_admin()) WebAudits_Sec_Admin::boot();
-    // Den eigenen Updater der alten Etch-Security-Datei gibt es nicht mehr.
+    // The old Etch Security file's own updater no longer exists.
     if (wp_next_scheduled('etch_security_update_check')) wp_clear_scheduled_hook('etch_security_update_check');
 }, 0);
 
-/** Reiter der Suite-Seite: Übersicht | Konten & Sicherheit | Sicherheits-Log. */
+/** Tabs of the suite page: Overview | Accounts & security | Security log. */
 function webaudits_admin_tabs($aktiv) {
     $tabs = array(
         'suite'  => webaudits_txt('Übersicht & Einstellungen', 'Overview & settings'),
-        'konten' => webaudits_txt('Konten & Sicherheit', 'Accounts & security'),
+        'accounts' => webaudits_txt('Konten & Sicherheit', 'Accounts & security'),
         'log'    => webaudits_txt('Sicherheits-Log', 'Security log'),
     );
     echo '<nav class="nav-tab-wrapper" style="margin-bottom:16px">';
@@ -1569,11 +1687,11 @@ function webaudits_admin_tabs($aktiv) {
     echo '</nav>';
 }
 
-// Alte Lesezeichen auf „Werkzeuge → Etch Security" landen auf dem neuen Reiter
-// (die Seite gibt es nicht mehr; WordPress würde sonst „keine Berechtigung" zeigen).
+// Old bookmarks to "Tools → Etch Security" land on the new tab
+// (the page no longer exists; WordPress would otherwise show "not allowed").
 add_action('admin_page_access_denied', function () {
     if (WebAudits_Sec::$active && isset($_GET['page']) && $_GET['page'] === 'etch-security' && current_user_can('manage_options')) {
-        $tab = (isset($_GET['tab']) && $_GET['tab'] === 'log') ? 'log' : 'konten';
+        $tab = (isset($_GET['tab']) && $_GET['tab'] === 'log') ? 'log' : 'accounts';
         wp_safe_redirect(WebAudits_Sec_Admin::url($tab));
         exit;
     }
