@@ -9,13 +9,17 @@
  *              security updates. Self-updating. Tools → WebAudits Suite.
  * Version: 4.0.0
  * Requires at least: 6.0
- * Requires PHP: 7.4
+ * Requires PHP: 8.1
  * Author: Tobias Haas
  * Author URI: https://github.com/tobiashaas
  * License: MIT
  * License URI: https://opensource.org/licenses/MIT
  * Update URI: https://github.com/tobiashaas/webaudits-suite
  *
+ * 4.1: Minimum PHP 8.1 (8.0 and older are end of life). The updater no longer
+ *      installs a release whose "Requires PHP" is higher than the server's PHP;
+ *      on an older PHP the admin shows a notice. This release still runs on
+ *      older PHP, so an outdated server keeps its headers/CSP instead of losing them.
  * 4.0: Usable on any site, not only ours. Runs as mu-plugin or regular plugin
  *      (the updater writes to the running file, the config is looked up in
  *      mu-plugins/, wp-content/ and next to the plugin). Safe first run without
@@ -852,7 +856,8 @@ add_filter('wp_dropdown_pages', function ($html, $args) {
 // Canonical repo (public, no token needed). One release = one tag vX.Y.Z;
 // the cron compares twice daily and replaces ONLY webaudits-suite.php — the
 // site config (webaudits-config.php) and the DB option stay untouched.
-const WEBAUDITS_SUITE_VERSION = '4.0.0';
+const WEBAUDITS_SUITE_VERSION = '4.1.0';
+const WEBAUDITS_SUITE_MIN_PHP = '8.1';   // keep in sync with the "Requires PHP" header
 const WEBAUDITS_SUITE_REPO = 'tobiashaas/webaudits-suite';
 
 /** Update source: 'update_repo' from the config (owner/repo), otherwise the canonical repo. */
@@ -871,6 +876,15 @@ add_action('init', function () {
 });
 add_action('webaudits_update_check', function () {
     if (webaudits_cfg('self_update', true)) webaudits_run_update_check();
+});
+
+// Below the minimum PHP version: keep running, but tell the admin that updates are blocked.
+add_action('admin_notices', function () {
+    if (version_compare(PHP_VERSION, WEBAUDITS_SUITE_MIN_PHP, '>=') || !current_user_can('manage_options')) return;
+    echo '<div class="notice notice-error"><p><strong>WebAudits Suite:</strong> ' . esc_html(sprintf(webaudits_txt(
+        'Dieser Server läuft mit PHP %1$s. Die Suite braucht mindestens PHP %2$s — neue Versionen werden erst nach einem PHP-Update installiert (Hoster-Panel).',
+        'This server runs PHP %1$s. The suite needs at least PHP %2$s — new versions are only installed after a PHP upgrade (hosting panel).'
+    ), PHP_VERSION, WEBAUDITS_SUITE_MIN_PHP)) . '</p></div>';
 });
 
 function webaudits_run_update_check() {
@@ -914,6 +928,13 @@ function webaudits_run_update_check() {
     }
     if (!$valid) {
         $status['error'] = 'download_invalid';
+        update_option('webaudits_suite_update_status', $status, false);
+        return $status;
+    }
+    // Never install a release that needs a newer PHP than this server runs — the site
+    // stays on its current version and the admin overview shows why.
+    if (preg_match('/^\s*\*\s*Requires PHP:\s*([0-9.]+)/m', $code, $req) && version_compare(PHP_VERSION, $req[1], '<')) {
+        $status['error'] = 'requires_php_' . $req[1];
         update_option('webaudits_suite_update_status', $status, false);
         return $status;
     }
@@ -1000,7 +1021,12 @@ function webaudits_admin_page() {
                 ? '<strong>' . $T('Update verfügbar', 'update available') . ': v' . esc_html($upd['latest']) . '</strong>'
                 : $T('aktuell', 'up to date'));
         }
-        if (!empty($upd['error'])) $upd_txt .= ' · <span style="color:#d63638">' . esc_html($upd['error']) . '</span>';
+        if (!empty($upd['error'])) {
+            $err = strpos($upd['error'], 'requires_php_') === 0
+                ? sprintf($T('neue Version braucht PHP %1$s (Server: %2$s)', 'new version needs PHP %1$s (server: %2$s)'), substr($upd['error'], 13), PHP_VERSION)
+                : $upd['error'];
+            $upd_txt .= ' · <span style="color:#d63638">' . esc_html($err) . '</span>';
+        }
     }
     $rows = array(
         array($T('Version / Self-Update', 'Version / self-update'), webaudits_cfg('self_update', true) ? $on : $off,

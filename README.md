@@ -35,7 +35,7 @@ It runs on any WordPress site. No build step, no Composer, no dependencies: two 
 
 ## Requirements
 
-- WordPress 6.0+ (in production up to 7.x), PHP 7.4+
+- WordPress 6.0+ (in production up to 7.x), **PHP 8.1+** (in production on 8.4). The updater never installs a release that needs a newer PHP than your server runs; it shows a notice instead.
 - Optional: a consent manager for gated tracking (see below)
 
 ## Installation

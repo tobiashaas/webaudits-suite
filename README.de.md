@@ -35,7 +35,7 @@ Läuft auf jeder WordPress-Site. Kein Build-Schritt, kein Composer, keine Abhän
 
 ## Voraussetzungen
 
-- WordPress 6.0+ (im Einsatz bis 7.x), PHP 7.4+
+- WordPress 6.0+ (im Einsatz bis 7.x), **PHP 8.1+** (im Einsatz auf 8.4). Der Updater installiert nie eine Version, die ein neueres PHP braucht als der Server hat; stattdessen erscheint ein Hinweis.
 - Optional: ein Consent-Manager für gesteuertes Tracking (siehe unten)
 
 ## Installation
