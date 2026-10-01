@@ -23,7 +23,6 @@ Läuft auf jeder WordPress-Site. Kein Build-Schritt, kein Composer, keine Abhän
 | **LocalBusiness-Schema** | Optionales CPT-getriebenes `LocalBusiness`-JSON-LD (mehrere Standorte) auf einer Seite. Aus lassen, wenn das SEO-Plugin die Schemas liefert. |
 | **Google Tag Manager** | Consent-gated Container: als inaktives `<script type="text/plain" …>` ausgegeben, das der Consent-Manager erst nach Einwilligung freischaltet — **null Google-Requests vor Einwilligung**. Consent-Mode-v2-Defaults (`denied`) stehen immer davor. Siehe [Consent-Manager](#consent-manager). |
 | **GA4 direkt (gtag.js)** | Alternative zu GTM für einfache Sites. **Gegenseitig exklusiv:** Ist eine GTM-ID gesetzt, bleibt GA4-direkt gesperrt (Doppel-Tracking-Sperre). |
-| **WS-Form-Lead-Bridge** | Pusht bei `wsf-submit-success` ein dataLayer-Event (z. B. `generate_lead`) mit `form_id`. |
 | **Admin-Aufräumen** | Entfernt Dashboard-Widgets, Willkommens-Panel und eine konfigurierbare Liste von Plugin-Widgets. |
 | **Kommentare aus** (einschaltbar) | Komplett: Frontend geschlossen, Bestand ausgeblendet, Admin-Menü/Adminbar-Einträge und REST-Endpunkte entfernt, Feed-Links weg. |
 | **Login-Härtung** | Generische Login-Fehlermeldung, `DISALLOW_FILE_EDIT`, sortierbare „Letzter Login"-Spalte. |
@@ -78,6 +77,7 @@ Die Suite macht nicht doppelt, was ein verbreitetes Plugin auf derselben Site sc
 | **Simple History** | protokolliert nur noch Ereignisse des User Guards (blockierte/entschärfte Konten); Anmeldungen, Konten, Plugins und Updates bleiben in Simple History |
 | **SEOPress Pro** | verweist für Weiterleitungen und das LocalBusiness-Schema auf SEOPress (beides bleibt aus, solange es in der Suite nicht konfiguriert ist) |
 | Ein Consent-Manager, der GTM selbst lädt (Borlabs Cookie, Complianz, …) | braucht keine `gtm_id` — leer lassen |
+| **WS Form** | fasst das Formular-Tracking nicht an: in jedem Formular die WS-Form-Aktion **Conversion Tracking → Google Tag Manager (Data Layer)** anlegen (z. B. `event` = `generate_lead`, `form_id` = `#form_id`), vor einer Weiterleitungs-Aktion. WS Form löst `wsf-submit-success` nur als jQuery-Event aus, Brücken mit `document.addEventListener` sehen es nie. |
 
 ## Page-Builder
 

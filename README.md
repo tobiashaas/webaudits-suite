@@ -23,7 +23,6 @@ It runs on any WordPress site. No build step, no Composer, no dependencies: one 
 | **LocalBusiness schema** | Optional CPT-driven `LocalBusiness` JSON-LD (multi-location) on one page. Keep it off if your SEO plugin owns schemas. |
 | **Google Tag Manager** | Consent-gated container: rendered as an inert `<script type="text/plain" …>` that your consent manager unblocks after consent — **zero Google requests before consent**, no `noscript` iframe. Consent Mode v2 defaults (`denied`) are always set first. See [Consent managers](#consent-managers). |
 | **GA4 direct (gtag.js)** | Alternative to GTM for simple sites. **Mutually exclusive:** if a GTM ID is set, GA4-direct stays locked and an admin notice explains why — one tracking path, never two. |
-| **WS Form lead bridge** | Pushes a dataLayer event (e.g. `generate_lead`) on `wsf-submit-success`, with `form_id`. |
 | **Admin cleanup** | Removes dashboard widgets, the welcome panel and a configurable list of plugin widgets. |
 | **Comments off** (opt-in) | Complete: frontend closed, existing comments hidden, admin menu/adminbar entries and REST endpoints removed, feed links stripped. |
 | **Login hardening** | Generic login error (no username enumeration), `DISALLOW_FILE_EDIT`, sortable "Last login" column in the users list. |
@@ -78,6 +77,7 @@ The suite does not duplicate what a common plugin on the same site already does:
 | **Simple History** | logs only user-guard events (blocked/neutralised accounts); logins, accounts, plugins and updates stay in Simple History |
 | **SEOPress Pro** | points you to SEOPress for redirects and the LocalBusiness schema (both stay off unless you configure them in the suite) |
 | A consent manager that loads GTM itself (Borlabs Cookie, Complianz, …) | needs no `gtm_id` — leave it empty |
+| **WS Form** | does not touch form tracking: add WS Form's own action **Conversion Tracking → Google Tag Manager (Data Layer)** to each form (e.g. `event` = `generate_lead`, `form_id` = `#form_id`), placed before a redirect action. WS Form fires `wsf-submit-success` as a jQuery event only, so `document.addEventListener` bridges never see it. |
 
 ## Page builders
 

@@ -7,7 +7,7 @@
  *              fixes, XML-RPC block, security.txt, consent-gated GTM or GA4,
  *              admin cleanup, account allowlist + security log, forced core
  *              security updates. Self-updating. Tools → WebAudits Suite.
- * Version: 4.3.0
+ * Version: 4.4.0
  * Requires at least: 6.0
  * Requires PHP: 8.1
  * Author: Tobias Haas
@@ -16,6 +16,10 @@
  * License URI: https://opensource.org/licenses/MIT
  * Update URI: https://github.com/tobiashaas/webaudits-suite
  *
+ * 4.4: WS Form bridge removed. It listened for a native `wsf-submit-success`
+ *      event, but WS Form triggers it as a jQuery event only, so it never pushed
+ *      anything. Use WS Form's own "Conversion Tracking" action (Google Tag
+ *      Manager / Data Layer) per form. The config key wsf_bridge_event is ignored.
  * 4.3: Steps aside where another plugin already does the job: login-error masking
  *      and the last-login column when Wordfence provides them; general activity
  *      logging when Simple History is active (the security log then keeps only
@@ -168,10 +172,6 @@ function webaudits_file_config() {
         // consent_provider=custom: attributes of the inert GTM <script>, e.g. Cookiebot:
         //   array('type' => 'text/plain', 'data-cookieconsent' => 'statistics')
         'consent_script_attrs' => array(),
-        // WS Form bridge: pushes an event on wsf-submit-success. 'generate_lead' if
-        // every form is a lead; 'wsf_submit' if the container decides by form_id
-        // (multi-form sites). '' = bridge off.
-        'wsf_bridge_event'  => 'generate_lead',
 
         // --- Admin/Backend ---
         'admin_cleanup'        => true,   // remove dashboard widgets + welcome panel
@@ -581,7 +581,11 @@ add_action('wp_head', function () {
     echo '<script type="application/ld+json">' . wp_json_encode(array('@context' => 'https://schema.org', '@graph' => $nodes), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . '</script>' . "\n";
 }, 20);
 
-// ==================================================== 9) GTM consent-gated + WS Form bridge
+// ==================================================== 9) GTM consent-gated
+// Form submissions → dataLayer: use WS Form's own "Conversion Tracking" action
+// (type "Google Tag Manager (Data Layer)") in each form. The suite's former
+// bridge listened for a native `wsf-submit-success` event, but WS Form only
+// triggers it as a jQuery event — the bridge never fired (removed in 4.4).
 
 /** Is Pressidium Cookie Consent active? Relevant for consent_provider=pressidium.
  *  Slug verified against real site data; is_plugin_active is the reliable check. */
@@ -705,15 +709,6 @@ add_action('admin_notices', function () {
         )) . '</p></div>';
     }
 });
-
-// WS Form bridge: official document event `wsf-submit-success` (WS Form docs).
-add_action('wp_footer', function () {
-    if (!webaudits_cfg('gtm_id') || !webaudits_cfg('wsf_bridge_event')) return;
-    $event = esc_js(webaudits_cfg('wsf_bridge_event'));
-    ?>
-<script>document.addEventListener('wsf-submit-success',function(e){var d=(e&&e.detail)||{};window.dataLayer=window.dataLayer||[];window.dataLayer.push({event:'<?php echo $event; ?>',form_id:String(d.form_id||d.id||''),page_location:location.href});});</script>
-    <?php
-}, 20);
 
 // ==================================================== 10) Admin/backend cleanup
 // File editor off (security: no code editing via a compromised admin session).
@@ -886,7 +881,7 @@ add_filter('wp_dropdown_pages', function ($html, $args) {
 // Canonical repo (public, no token needed). One release = one tag vX.Y.Z;
 // the cron compares twice daily and replaces ONLY webaudits-suite.php — the
 // site config (webaudits-config.php) and the DB option stay untouched.
-const WEBAUDITS_SUITE_VERSION = '4.3.0';
+const WEBAUDITS_SUITE_VERSION = '4.4.0';
 const WEBAUDITS_SUITE_MIN_PHP = '8.1';   // keep in sync with the "Requires PHP" header
 const WEBAUDITS_SUITE_REPO = 'tobiashaas/webaudits-suite';
 
@@ -1120,8 +1115,6 @@ function webaudits_admin_page() {
                 ? '<code>' . esc_html($c['ga4_id']) . '</code> ' . $T('via gtag.js, Consent Mode v2 (Defaults denied). Exklusiv zu GTM.', 'via gtag.js, Consent Mode v2 (defaults denied). Mutually exclusive with GTM.')
                 : '<strong>' . esc_html($T('gesperrt', 'locked')) . '</strong> — ' . $T('GTM-Container ist gesetzt (Doppel-Tracking-Sperre). GA4 im GTM konfigurieren.', 'GTM container is set (double-tracking guard). Configure GA4 inside GTM.'))
             : $na),
-        array($T('WS-Form-Bridge', 'WS Form bridge'), ($c['gtm_id'] && $c['wsf_bridge_event']) ? $on : $off, ($c['gtm_id'] && $c['wsf_bridge_event'])
-            ? $T('Formular-Absendung (<code>wsf-submit-success</code>) → dataLayer-Event', 'Form submission (<code>wsf-submit-success</code>) → dataLayer event') . ' <code>' . esc_html($c['wsf_bridge_event']) . '</code>' : $na),
         array($T('Dashboard-Bereinigung', 'Dashboard cleanup'), !empty($c['admin_cleanup']) ? $on : $off, !empty($c['admin_cleanup'])
             ? $T('Standard-Widgets, Willkommens-Panel und Plugin-Widgets entfernt; leere Container ausgeblendet.', 'Default widgets, welcome panel and plugin widgets removed; empty containers hidden.') : $na),
         array($T('Letzter-Login-Spalte', 'Last-login column'), !empty($c['last_login_column']) ? (webaudits_wordfence_login_column() ? $elsewhere : $on) : $off, !empty($c['last_login_column'])
